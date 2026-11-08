@@ -24,6 +24,8 @@ You may use an AI agent, but what lands in the history is yours:
   `Co-authored-by: login <12345+login@users.noreply.github.com>`.
 - No AI tool footers ("Generated with ...") and no links to AI chats or agent sessions (claude.ai,
   chatgpt.com): sessions are private.
+- No agent attribution blocks in pull requests ("Requested by ... · project thread", the
+  `claude-projects-attribution` marker, claude.ai project links).
 - Author and committer are you, never an AI agent (an anthropic.com or openai.com address, Claude,
   Copilot or another bot).
 
