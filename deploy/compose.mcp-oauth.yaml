@@ -1,0 +1,65 @@
+# Sign-in with GitHub for /mcp, so Claude (custom connector) and other MCP clients connect
+# with OAuth instead of the shared basic-auth password. On top of compose.yaml, usually
+# with compose.sso.yaml too. Enable it in .env with
+#   COMPOSE_FILE=compose.yaml:compose.sso.yaml:compose.mcp-oauth.yaml
+# It uses sigbit/mcp-auth-proxy (mcp-auth/ in this repo) and can share the board's GitHub
+# app: add a second callback URL, https://<KANZO_DOMAIN>/.auth/github/callback.
+# See "Connect Claude with GitHub sign-in" in the README.
+services:
+  caddy:
+    depends_on:
+      mcp-auth:
+        condition: service_started
+    environment:
+      # Caddy sends /mcp and the OAuth endpoints to mcp-auth instead of basic auth.
+      KANZO_MCP_AUTH: oauth
+
+  mcp-auth:
+    image: ${MCP_AUTH_IMAGE:-ghcr.io/nickyyoo/kanzo-mcp-auth:2.10.2}
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    # Kanzo checks the Host header and mcp-auth sends the upstream's host, so it calls Kanzo
+    # by the site's own name (an alias on the `mcp` network, below) on Kanzo's port.
+    command: ["http://${KANZO_DOMAIN}:4242"]
+    environment:
+      EXTERNAL_URL: https://${KANZO_DOMAIN}
+      # Plain HTTP behind Caddy, which does HTTPS (also the image's defaults).
+      LISTEN: ":8080"
+      NO_AUTO_TLS: "true"
+      # The same GitHub app as the board's sign-in (compose.sso.yaml).
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:?set GITHUB_CLIENT_ID in .env}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:?set GITHUB_CLIENT_SECRET in .env}
+      # Who may connect: GitHub logins, comma-separated, exactly as GitHub writes them
+      # (upper/lower case matters). Without a list every GitHub account could connect,
+      # so it is required.
+      GITHUB_ALLOWED_USERS: ${MCP_GITHUB_USERS:?set MCP_GITHUB_USERS in .env}
+      # Only Caddy reaches it (no published port): take the client address from its X-Forwarded-For.
+      TRUSTED_PROXIES: 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7
+    volumes:
+      # Its signing key, registered clients and tokens: keep them across restarts.
+      - mcp-auth-data:/data
+    expose: ["8080"]
+    # `internal`: Caddy reaches it. `mcp`: it reaches Kanzo. `public`: it calls GitHub to
+    # check who signed in.
+    networks: [internal, mcp, public]
+    mem_limit: 128m
+    pids_limit: 64
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  kanzo:
+    networks:
+      internal: {}
+      mcp:
+        aliases: ["${KANZO_DOMAIN}"]
+
+networks:
+  # Only mcp-auth and Kanzo; here the site's name resolves to Kanzo.
+  mcp:
+    internal: true
+
+volumes:
+  mcp-auth-data:

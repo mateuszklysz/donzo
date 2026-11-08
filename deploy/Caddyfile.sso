@@ -2,7 +2,7 @@
 # Kanzo has no logins of its own, so this proxy is the only thing between the
 # internet and the board:
 #   - the board in a browser: GitHub sign-in through oauth2-proxy
-#   - /mcp (coding agents, which can't do a browser sign-in): basic auth
+#   - /mcp (coding agents): basic auth, or OAuth with GitHub (compose.mcp-oauth.yaml)
 
 # Global options. Behind another HTTPS proxy (compose.behind-proxy.yaml) the client's
 # address comes from the X-Forwarded-For that proxy appends (the rightmost entry it did
@@ -24,6 +24,56 @@
 	tls /certs/fullchain.pem /certs/privkey.pem
 }
 (tls-none) {
+}
+
+# How /mcp signs in (KANZO_MCP_AUTH, set by the compose files):
+#   basic - the basic-auth password from .env (default)
+#   oauth - OAuth with GitHub through mcp-auth (compose.mcp-oauth.yaml), for Claude's
+#           custom connectors and other MCP clients that sign in themselves
+(mcp-basic) {
+	@mcp path /mcp /mcp/*
+	handle @mcp {
+		basic_auth {
+			{$KANZO_AUTH_USER} {$KANZO_AUTH_HASH}
+		}
+		reverse_proxy kanzo:4242 {
+			header_up Host {host}
+			header_up Origin ^https:// http://
+			# Kanzo has no use for the proxy's credentials or session cookie, and a client
+			# must not pick the name Kanzo shows for a "guest computer".
+			header_up -Authorization
+			header_up -Cookie
+			header_up -X-Kanzo-Computer
+			flush_interval -1
+		}
+	}
+}
+(mcp-oauth) {
+	# mcp-auth's own endpoints: discovery, client registration, tokens, the GitHub sign-in.
+	@mcp-oauth path /.well-known/oauth-protected-resource /.well-known/oauth-protected-resource/* /.well-known/oauth-authorization-server /.well-known/oauth-authorization-server/* /.well-known/jwks.json /.idp/* /.auth/*
+	handle @mcp-oauth {
+		reverse_proxy mcp-auth:8080 {
+			header_up -X-Kanzo-Computer
+		}
+	}
+	# /mcp itself: mcp-auth checks the access token, then passes the request to Kanzo.
+	@mcp path /mcp /mcp/*
+	handle @mcp {
+		reverse_proxy mcp-auth:8080 {
+			# A bearer token is not sent by the browser on its own, so there is nothing for
+			# Kanzo's Origin check to protect here; and mcp-auth changes the Host it checks it against.
+			header_up -Origin
+			header_up -Cookie
+			header_up -X-Kanzo-Computer
+			flush_interval -1
+			# Tell clients where to sign in (RFC 9728), so they don't have to guess.
+			@unauthorized status 401
+			handle_response @unauthorized {
+				header WWW-Authenticate `Bearer resource_metadata="https://{$KANZO_DOMAIN}/.well-known/oauth-protected-resource"`
+				copy_response
+			}
+		}
+	}
 }
 
 {$KANZO_SITE} {
@@ -54,23 +104,8 @@
 		}
 	}
 
-	# MCP for coding agents: basic auth, then Kanzo.
-	@mcp path /mcp /mcp/*
-	handle @mcp {
-		basic_auth {
-			{$KANZO_AUTH_USER} {$KANZO_AUTH_HASH}
-		}
-		reverse_proxy kanzo:4242 {
-			header_up Host {host}
-			header_up Origin ^https:// http://
-			# Kanzo has no use for the proxy's credentials or session cookie, and a client
-			# must not pick the name Kanzo shows for a "guest computer".
-			header_up -Authorization
-			header_up -Cookie
-			header_up -X-Kanzo-Computer
-			flush_interval -1
-		}
-	}
+	# MCP for coding agents (KANZO_MCP_AUTH, snippets above).
+	import mcp-{$KANZO_MCP_AUTH:basic}
 
 	# Everything else: a GitHub session checked by oauth2-proxy, then Kanzo.
 	handle {

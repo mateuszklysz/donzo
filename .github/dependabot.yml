@@ -9,7 +9,7 @@ updates:
     commit-message:
       prefix: ci
   - package-ecosystem: docker
-    directory: /
+    directories: [/, /mcp-auth]
     schedule:
       interval: weekly
     commit-message:

@@ -7,7 +7,8 @@ Let's Encrypt certificates, GitHub sign-in or a password). Unofficial: not affil
 Kanzo project.
 
 Sign in to the board with your **GitHub account** (oauth2-proxy) or a password;
-coding agents use the MCP endpoint with a password.
+coding agents use the MCP endpoint with a password, or sign in with GitHub too (Claude's
+custom connectors, through mcp-auth-proxy).
 
 | Image | Contents |
 | --- | --- |
@@ -96,8 +97,8 @@ capabilities and memory/pid limits. Do not add `ports:` to it.
 
 The board then asks for a GitHub login instead of the password; only the GitHub
 accounts you list (plus, optionally, members of an org or team) get in. `/mcp` keeps
-the password from `KANZO_AUTH_USER`/`KANZO_AUTH_HASH`, because agents can't do a
-browser sign-in.
+the password from `KANZO_AUTH_USER`/`KANZO_AUTH_HASH`, unless you add GitHub sign-in for
+it too ([Connect Claude with GitHub sign-in](#connect-claude-with-github-sign-in)).
 
 1. Create a GitHub OAuth app: GitHub → Settings → Developer settings →
    [OAuth Apps](https://github.com/settings/developers) → New OAuth App.
@@ -221,6 +222,45 @@ the project from the repo, as `kanzo mcp` does locally:
 } } }
 ```
 
+### Connect Claude with GitHub sign-in
+
+Claude's custom connectors (claude.ai, Claude Desktop) can't send a password; they sign
+in with OAuth. `compose.mcp-oauth.yaml` puts
+[mcp-auth-proxy](https://github.com/sigbit/mcp-auth-proxy) in front of `/mcp`: the client
+registers itself, you sign in with GitHub in a browser window once, and it gets its own
+token. The board's sign-in doesn't change. `/mcp` then no longer takes the password, so
+agents connect the same way.
+
+1. In the GitHub app you use for the board's sign-in, add a second callback URL:
+   `https://kanzo.example.com/.auth/github/callback`. A GitHub App takes several callback
+   URLs. An OAuth App takes only one: change it to `https://kanzo.example.com/` (GitHub
+   accepts every path below it, so the board's `/oauth2/callback` keeps working). No new
+   permissions: when only logins are allowed, mcp-auth asks GitHub for no scopes and only
+   reads who signed in.
+2. In `.env`: add `:compose.mcp-oauth.yaml` to `COMPOSE_FILE` and set `MCP_GITHUB_USERS`
+   to the GitHub logins that may connect, comma-separated and written exactly as on GitHub
+   (upper/lower case matters).
+3. `docker compose up -d`.
+4. Claude: Settings → Connectors → Add custom connector, URL
+   `https://kanzo.example.com/mcp`, OAuth Client ID and Secret empty. Connect, then sign
+   in with GitHub and press Authorize. Claude Code:
+
+   ```sh
+   claude mcp add --transport http kanzo https://kanzo.example.com/mcp
+   ```
+
+   then `/mcp` in Claude Code to sign in.
+
+It also works without `compose.sso.yaml` (password for the board, GitHub for `/mcp`); it
+still needs `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET` from a GitHub app. The image is
+`ghcr.io/nickyyoo/kanzo-mcp-auth`, built in this repository from mcp-auth-proxy's release
+pinned by commit (`mcp-auth/Dockerfile`), as a static binary on distroless.
+
+A token lasts 24 hours and is renewed for up to 30 days. Removing someone from
+`MCP_GITHUB_USERS` stops new sign-ins; to end every connection at once, delete the
+signing key and tokens: `docker compose rm -sf mcp-auth && docker volume rm
+kanzo_mcp-auth-data && docker compose up -d` (everyone connects again).
+
 `kanzo join` does **not** work through HTTPS (it speaks plain HTTP to port 4242).
 
 ## Update
@@ -310,8 +350,9 @@ tests/smoke.sh kanzo:local-git linux/amd64                                      
 | Path | |
 | --- | --- |
 | `Dockerfile`, `docker-entrypoint.sh` | the image |
-| `deploy/` | production stack: `compose.yaml`, `Caddyfile`, `.env.example`; GitHub sign-in: `compose.sso.yaml`, `Caddyfile.sso`, `sso-templates/`; own certificate: `compose.tls-files.yaml`; behind another proxy: `compose.behind-proxy.yaml`; Podman Quadlet: [`deploy/quadlet/`](deploy/quadlet/) |
-| `tests/smoke.sh` | smoke test run in CI on amd64 and arm64 |
+| `deploy/` | production stack: `compose.yaml`, `Caddyfile`, `.env.example`; GitHub sign-in: `compose.sso.yaml`, `Caddyfile.sso`, `sso-templates/`; own certificate: `compose.tls-files.yaml`; behind another proxy: `compose.behind-proxy.yaml`; GitHub sign-in for `/mcp`: `compose.mcp-oauth.yaml`; Podman Quadlet: [`deploy/quadlet/`](deploy/quadlet/) |
+| `mcp-auth/Dockerfile` | the mcp-auth image (mcp-auth-proxy, MIT) for `compose.mcp-oauth.yaml` |
+| `tests/smoke.sh`, `tests/smoke-mcp-auth.sh` | smoke tests run in CI on amd64 and arm64 |
 | `SECURITY.md` | security model, hardening, reporting a vulnerability |
 | `.github/workflows/build.yml` | build, test, scan, push to GHCR; release on `v*` tags |
 | `.github/workflows/upstream.yml` | daily check: a pull request for each new Kanzo release |
