@@ -10,6 +10,8 @@ services:
       - ./Caddyfile.sso:/etc/caddy/Caddyfile:ro
 
   oauth2-proxy:
+    labels:
+      donzo.allowed: ${GITHUB_USERS:-${GITHUB_ORG:-${GITHUB_TEAM:?set GITHUB_USERS, GITHUB_ORG or GITHUB_TEAM in .env}}}
     image: quay.io/oauth2-proxy/oauth2-proxy:v7.15.5@sha256:8498b0d0ef0a7b29686414000a08aee467f02d0299c9ed1e006a8f33fc017916
     restart: unless-stopped
     read_only: true
@@ -20,9 +22,10 @@ services:
       OAUTH2_PROXY_CLIENT_ID: ${GITHUB_CLIENT_ID:?set GITHUB_CLIENT_ID in .env}
       OAUTH2_PROXY_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:?set GITHUB_CLIENT_SECRET in .env}
       OAUTH2_PROXY_COOKIE_SECRET: ${OAUTH2_COOKIE_SECRET:?set OAUTH2_COOKIE_SECRET in .env}
-      # Who may sign in. Without any of these every GitHub account could, so the
-      # user list is required; an org or team adds its members as well.
-      OAUTH2_PROXY_GITHUB_USERS: ${GITHUB_USERS:?set GITHUB_USERS in .env (comma-separated logins)}
+      # Who may sign in: these logins, plus members of the org or teams if set.
+      # Without any of them every GitHub account could, so the label below makes
+      # `docker compose` refuse to start until at least one is set.
+      OAUTH2_PROXY_GITHUB_USERS: ${GITHUB_USERS:-}
       OAUTH2_PROXY_GITHUB_ORG: ${GITHUB_ORG:-}
       OAUTH2_PROXY_GITHUB_TEAM: ${GITHUB_TEAM:-}
       # What the board asks GitHub for: only the account's email addresses (read-only).

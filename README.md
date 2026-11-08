@@ -112,8 +112,8 @@ browser sign-in.
    | `COMPOSE_FILE` | `compose.yaml:compose.sso.yaml` (uncomment the line) |
    | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | from the OAuth app |
    | `OAUTH2_COOKIE_SECRET` | output of `openssl rand -base64 32 \| tr -- '+/' '-_'` |
-   | `GITHUB_USERS` | GitHub logins allowed in, comma-separated (required) |
-   | `GITHUB_ORG`, `GITHUB_TEAM` | optional: also allow an org's members, or teams as `org:team,...`; then also set `GITHUB_SCOPE=user:email read:org` |
+   | `GITHUB_USERS` | GitHub logins allowed in, comma-separated |
+   | `GITHUB_ORG`, `GITHUB_TEAM` | allow an org's members, or teams as `org:team,...` (set at least one of these three); then also set `GITHUB_SCOPE=user:email read:org` |
 
    Sign-in asks GitHub only for read access to the account's email addresses
    (`user:email`), plus organization membership (`read:org`) when you set `GITHUB_SCOPE` for
