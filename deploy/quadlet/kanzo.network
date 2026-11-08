@@ -1,0 +1,5 @@
+[Unit]
+Description=Internal network for Kanzo and OAuth2-proxy
+
+[Network]
+NetworkName=kanzo-internal
