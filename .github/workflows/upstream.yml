@@ -1,0 +1,51 @@
+# Daily: if emanuele-em/kanzo has a newer release than KANZO_VERSION in the
+# Dockerfile, bump it on main, tag vX.Y.Z and start the build, which pushes the
+# images and publishes the GitHub Release.
+# (Pushes made with GITHUB_TOKEN don't trigger other workflows, so the build
+# is started explicitly with workflow_dispatch, which is allowed.)
+name: upstream
+
+on:
+  schedule:
+    - cron: "41 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  bump:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Compare versions
+        id: cmp
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          current="$(sed -n 's/^ARG KANZO_VERSION=//p' Dockerfile)"
+          latest="$(gh api repos/emanuele-em/kanzo/releases/latest --jq .tag_name | sed 's/^v//')"
+          echo "current=$current latest=$latest"
+          echo "$latest" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || { echo "unexpected tag '$latest'"; exit 1; }
+          newest="$(printf '%s\n%s\n' "$current" "$latest" | sort -V | tail -1)"
+          if [ "$latest" != "$current" ] && [ "$newest" = "$latest" ]; then
+            echo "bump=true" >> "$GITHUB_OUTPUT"
+          fi
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
+
+      - name: Bump, tag and start build
+        if: steps.cmp.outputs.bump == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          V: ${{ steps.cmp.outputs.latest }}
+        run: |
+          sed -i "s/^ARG KANZO_VERSION=.*/ARG KANZO_VERSION=$V/" Dockerfile
+          sed -i -E "s/(kanzo:|donzo-deploy-v)[0-9]+\.[0-9]+\.[0-9]+/\1$V/g" README.md deploy/.env.example
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "chore: update Kanzo to $V"
+          git tag "v$V"
+          git push origin HEAD "v$V"
+          gh workflow run build.yml --ref "v$V"
