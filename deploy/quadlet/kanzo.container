@@ -1,0 +1,31 @@
+[Unit]
+Description=Kanzo Kanban Board
+Documentation=https://github.com/mateuszklysz/donzo
+After=network-online.target
+Wants=network-online.target
+
+[Container]
+ContainerName=kanzo
+Image=ghcr.io/mateuszklysz/kanzo:latest
+# Kanzo answers only to Host names it knows: its container hostname is one of them.
+# Change this to your exact public domain (e.g. kanzo.example.com):
+HostName=kanzo.example.com
+Network=kanzo.network
+Environment=KANZO_PORT=4242
+Environment=KANZO_MCP_HTTP=true
+Volume=kanzo-data.volume:/data:Z
+ReadOnly=true
+DropCapability=ALL
+NoNewPrivileges=true
+HealthCmd=wget -q -T 4 -O /dev/null "http://127.0.0.1:4242/api/ping" || exit 1
+HealthInterval=30s
+HealthRetries=3
+HealthStartPeriod=10s
+HealthTimeout=5s
+
+[Service]
+Restart=always
+TimeoutStartSec=300
+
+[Install]
+WantedBy=default.target

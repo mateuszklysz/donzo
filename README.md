@@ -193,6 +193,8 @@ Caddy takes the visitor's address from the last `X-Forwarded-For` entry your pro
 adds, so a visitor can't fake it. Serve the board only over HTTPS: the GitHub sign-in
 cookie and Kanzo's checks expect the browser to see `https://`.
 
+For systemd-managed deployments with Podman (such as on Fedora CoreOS or RHEL) or behind Nginx Proxy Manager, see [Podman Quadlet](deploy/quadlet/).
+
 ## Connect coding agents
 
 Agents reach the MCP endpoint at `https://<your domain>/mcp` with the
@@ -308,7 +310,7 @@ tests/smoke.sh kanzo:local-git linux/amd64                                      
 | Path | |
 | --- | --- |
 | `Dockerfile`, `docker-entrypoint.sh` | the image |
-| `deploy/` | production stack: `compose.yaml`, `Caddyfile`, `.env.example`; GitHub sign-in: `compose.sso.yaml`, `Caddyfile.sso`, `sso-templates/`; own certificate: `compose.tls-files.yaml`; behind another proxy: `compose.behind-proxy.yaml` |
+| `deploy/` | production stack: `compose.yaml`, `Caddyfile`, `.env.example`; GitHub sign-in: `compose.sso.yaml`, `Caddyfile.sso`, `sso-templates/`; own certificate: `compose.tls-files.yaml`; behind another proxy: `compose.behind-proxy.yaml`; Podman Quadlet: [`deploy/quadlet/`](deploy/quadlet/) |
 | `tests/smoke.sh` | smoke test run in CI on amd64 and arm64 |
 | `SECURITY.md` | security model, hardening, reporting a vulnerability |
 | `.github/workflows/build.yml` | build, test, scan, push to GHCR; release on `v*` tags |
