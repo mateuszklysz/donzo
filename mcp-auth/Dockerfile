@@ -21,7 +21,13 @@ ADD https://github.com/sigbit/mcp-auth-proxy.git#${UPSTREAM_COMMIT} /src
 WORKDIR /src
 # Build with the Go in this image, never a toolchain downloaded on the fly.
 ENV GOTOOLCHAIN=local CGO_ENABLED=0
-RUN --mount=type=cache,target=/root/go/pkg/mod go mod download
+# Upstream's release pins dependencies with known vulnerabilities (Trivy, HIGH): raise
+# them to the fixed versions. Drop a line once the upstream release has caught up.
+RUN --mount=type=cache,target=/root/go/pkg/mod \
+    go get golang.org/x/crypto@v0.58.0 golang.org/x/net@v0.62.0 golang.org/x/text@v0.43.0 \
+           google.golang.org/grpc@v1.83.2 \
+ && go mod tidy \
+ && go mod download
 ARG TARGETOS
 ARG TARGETARCH
 RUN --mount=type=cache,target=/root/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
