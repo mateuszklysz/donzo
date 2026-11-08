@@ -8,10 +8,18 @@ services:
         condition: service_started
     volumes:
       - ./Caddyfile.sso:/etc/caddy/Caddyfile:ro
+    environment:
+      DONZO_GITHUB_ALLOWED: ${GITHUB_USERS:-}${GITHUB_ORG:-}${GITHUB_TEAM:-}
+    # Never serve the board when no GitHub login, org or team limits who may sign in.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - >-
+        if [ -z "$$DONZO_GITHUB_ALLOWED" ]; then
+        echo "set GITHUB_USERS, GITHUB_ORG or GITHUB_TEAM in .env" >&2; exit 1; fi;
+        exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
 
   oauth2-proxy:
-    labels:
-      donzo.allowed: ${GITHUB_USERS:-${GITHUB_ORG:-${GITHUB_TEAM:?set GITHUB_USERS, GITHUB_ORG or GITHUB_TEAM in .env}}}
     image: quay.io/oauth2-proxy/oauth2-proxy:v7.15.5@sha256:8498b0d0ef0a7b29686414000a08aee467f02d0299c9ed1e006a8f33fc017916
     restart: unless-stopped
     read_only: true
@@ -23,8 +31,8 @@ services:
       OAUTH2_PROXY_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:?set GITHUB_CLIENT_SECRET in .env}
       OAUTH2_PROXY_COOKIE_SECRET: ${OAUTH2_COOKIE_SECRET:?set OAUTH2_COOKIE_SECRET in .env}
       # Who may sign in: these logins, plus members of the org or teams if set.
-      # Without any of them every GitHub account could, so the label below makes
-      # `docker compose` refuse to start until at least one is set.
+      # Without any of them every GitHub account could, so Caddy (above) refuses to
+      # start until at least one is set.
       OAUTH2_PROXY_GITHUB_USERS: ${GITHUB_USERS:-}
       OAUTH2_PROXY_GITHUB_ORG: ${GITHUB_ORG:-}
       OAUTH2_PROXY_GITHUB_TEAM: ${GITHUB_TEAM:-}
