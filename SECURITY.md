@@ -16,7 +16,7 @@ people and agents you chose ever reach it.
 | Layer | What protects it |
 | --- | --- |
 | Network | Kanzo has no published port and sits on an `internal` Docker network with no internet access. Only Caddy publishes ports (80, 443; behind your own proxy only `127.0.0.1:8080`). |
-| Sign-in | Board: GitHub sign-in through oauth2-proxy, limited to the logins in `GITHUB_USERS` and/or the members of `GITHUB_ORG`/`GITHUB_TEAM` (the stack refuses to start with none of them), or basic auth. `/mcp`: basic auth with a long random password (bcrypt, cost 14). |
+| Sign-in | Board: GitHub sign-in through oauth2-proxy, limited to the logins in `GITHUB_USERS` and/or the members of `GITHUB_ORG`/`GITHUB_TEAM` (the stack refuses to start with none of them), or basic auth. `/mcp`: basic auth with a long random password (bcrypt, cost 14), or OAuth through mcp-auth (`compose.mcp-oauth.yaml`): GitHub sign-in limited to `MCP_GITHUB_USERS` (required), PKCE, RS256 access tokens for this site only, valid 24 h. |
 | Sessions | `__Host-` cookie: Secure, HttpOnly, SameSite=Lax, host-only, 24 h; the GitHub token is checked again every hour; per-request CSRF cookies during sign-in; redirects only back to the same host. |
 | Requests | Kanzo answers only to its own host name, rejects any foreign `Origin` (cross-site requests), and its "this computer only" endpoints refuse proxied requests. Caddy forwards neither its credentials nor the session cookie to Kanzo and caps request bodies at 25 MB. |
 | Browser | HSTS (2 years), Kanzo's strict Content-Security-Policy, `X-Frame-Options: DENY`, `nosniff`, no referrer, restrictive Permissions-Policy and cross-origin policies. |
@@ -34,11 +34,15 @@ Known limits:
   noisy clients.
 - Removing a user from `GITHUB_USERS` blocks new sign-ins; to end an existing session
   at once, also rotate `OAUTH2_COOKIE_SECRET`.
+- With `compose.mcp-oauth.yaml`, any MCP client may register itself (that is how
+  Claude's connectors work), but only a login in `MCP_GITHUB_USERS` gets a token. A token
+  is renewed for up to 30 days without a new GitHub check; removing a login stops new
+  sign-ins, and deleting the `kanzo_mcp-auth-data` volume ends every connection at once.
 
 ## Hardening checklist for a server
 
 - Firewall: allow only 22 (SSH, ideally from your IP), 80, 443/tcp and 443/udp.
-  Docker publishes only Caddy's ports; never add `ports:` to `kanzo` or `oauth2-proxy`.
+  Docker publishes only Caddy's ports; never add `ports:` to `kanzo`, `oauth2-proxy` or `mcp-auth`.
 - SSH with keys only, root login disabled; automatic OS security updates.
 - `chmod 600 .env`; keep it out of backups that others can read.
 - Pin `KANZO_IMAGE` by version and digest; update by changing the tag on purpose.
@@ -48,7 +52,8 @@ Known limits:
 ## Repository settings (maintainer)
 
 - Branch protection or a ruleset on `main`: pull requests required, required checks
-  `rules`, `deploy and workflow checks`, `image (default)`, `image (git)`; no force pushes.
+  `rules`, `deploy and workflow checks`, `image (default)`, `image (git)`, `image (mcp-auth)`;
+  no force pushes.
 - A tag ruleset for `v*`: only maintainers can create release tags (a tag publishes images).
 - Settings → Actions → General: workflow permissions "Read repository contents";
   allow GitHub Actions to create pull requests (for the upstream bump).

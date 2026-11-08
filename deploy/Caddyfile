@@ -24,29 +24,69 @@
 (tls-none) {
 }
 
+# How /mcp signs in (KANZO_MCP_AUTH, set by the compose files):
+#   basic - the basic-auth password, like the rest of the site (default)
+#   oauth - OAuth with GitHub through mcp-auth (compose.mcp-oauth.yaml), for Claude's
+#           custom connectors and other MCP clients that sign in themselves
+(mcp-basic) {
+}
+(mcp-oauth) {
+	# mcp-auth's own endpoints: discovery, client registration, tokens, the GitHub sign-in.
+	@mcp-oauth path /.well-known/oauth-protected-resource /.well-known/oauth-protected-resource/* /.well-known/oauth-authorization-server /.well-known/oauth-authorization-server/* /.well-known/jwks.json /.idp/* /.auth/*
+	handle @mcp-oauth {
+		reverse_proxy mcp-auth:8080 {
+			header_up -X-Kanzo-Computer
+		}
+	}
+	# /mcp itself: mcp-auth checks the access token, then passes the request to Kanzo.
+	@mcp path /mcp /mcp/*
+	handle @mcp {
+		reverse_proxy mcp-auth:8080 {
+			# A bearer token is not sent by the browser on its own, so there is nothing for
+			# Kanzo's Origin check to protect here; and mcp-auth changes the Host it checks it against.
+			header_up -Origin
+			header_up -Cookie
+			header_up -X-Kanzo-Computer
+			flush_interval -1
+			# Tell clients where to sign in (RFC 9728), so they don't have to guess.
+			@unauthorized status 401
+			handle_response @unauthorized {
+				header WWW-Authenticate `Bearer resource_metadata="https://{$KANZO_DOMAIN}/.well-known/oauth-protected-resource"`
+				copy_response
+			}
+		}
+	}
+}
+
 {$KANZO_SITE} {
 	import tls-{$KANZO_TLS:auto}
 	encode zstd gzip
 
-	basic_auth {
-		{$KANZO_AUTH_USER} {$KANZO_AUTH_HASH}
-	}
+	# MCP for coding agents (KANZO_MCP_AUTH, snippets above).
+	import mcp-{$KANZO_MCP_AUTH:basic}
 
-	reverse_proxy kanzo:4242 {
-		# Kanzo only accepts the Host names its container is called by
-		# (compose sets `hostname: ${KANZO_DOMAIN}`), so pass the original Host.
-		header_up Host {host}
-		# Kanzo requires Origin == "http://" + Host. The browser sends https://,
-		# so only the scheme is rewritten: a foreign origin (https://evil.example)
-		# becomes http://evil.example and is still rejected by Kanzo.
-		header_up Origin ^https:// http://
-		# Kanzo has no use for the proxy's credentials or session cookie, and a client
-		# must not pick the name Kanzo shows for a "guest computer".
-		header_up -Authorization
-		header_up -Cookie
-		header_up -X-Kanzo-Computer
-		# MCP over HTTP streams responses (SSE).
-		flush_interval -1
+	# Everything else (and /mcp, unless it signs in with OAuth): basic auth, then Kanzo.
+	handle {
+		basic_auth {
+			{$KANZO_AUTH_USER} {$KANZO_AUTH_HASH}
+		}
+
+		reverse_proxy kanzo:4242 {
+			# Kanzo only accepts the Host names its container is called by
+			# (compose sets `hostname: ${KANZO_DOMAIN}`), so pass the original Host.
+			header_up Host {host}
+			# Kanzo requires Origin == "http://" + Host. The browser sends https://,
+			# so only the scheme is rewritten: a foreign origin (https://evil.example)
+			# becomes http://evil.example and is still rejected by Kanzo.
+			header_up Origin ^https:// http://
+			# Kanzo has no use for the proxy's credentials or session cookie, and a client
+			# must not pick the name Kanzo shows for a "guest computer".
+			header_up -Authorization
+			header_up -Cookie
+			header_up -X-Kanzo-Computer
+			# MCP over HTTP streams responses (SSE).
+			flush_interval -1
+		}
 	}
 
 	# Kanzo sends its own strict Content-Security-Policy; these cover every response,

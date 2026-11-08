@@ -1,4 +1,5 @@
-# Builds the Kanzo image for linux/amd64 + linux/arm64, tests it, and pushes it to GHCR.
+# Builds the Kanzo image for linux/amd64 + linux/arm64, tests it, and pushes it to GHCR,
+# and the same for the mcp-auth image (mcp-auth/, OAuth sign-in for /mcp).
 #
 # - pull_request: build + scan + smoke test, no push
 # - push to main: build, test, push (version = KANZO_VERSION in the Dockerfile)
@@ -11,7 +12,7 @@ on:
   push:
     branches: [main]
     tags: ["v*"]
-    paths: [Dockerfile, docker-entrypoint.sh, .dockerignore, tests/**, deploy/**, .github/workflows/build.yml]
+    paths: [Dockerfile, docker-entrypoint.sh, .dockerignore, mcp-auth/**, tests/**, deploy/**, .github/workflows/build.yml]
   pull_request:
   schedule:
     - cron: "17 4 * * 1"
@@ -45,13 +46,14 @@ jobs:
           cp .env.example .env
           sed -i -e 's/^GITHUB_CLIENT_ID=$/GITHUB_CLIENT_ID=ci/' -e 's/^GITHUB_CLIENT_SECRET=$/GITHUB_CLIENT_SECRET=ci/' \
                  -e 's/^OAUTH2_COOKIE_SECRET=$/OAUTH2_COOKIE_SECRET=0123456789abcdef0123456789abcdef/' \
-                 -e 's/^GITHUB_USERS=$/GITHUB_USERS=octocat/' .env
-          for extra in "" :compose.sso.yaml; do
+                 -e 's/^GITHUB_USERS=$/GITHUB_USERS=octocat/' -e 's/^MCP_GITHUB_USERS=$/MCP_GITHUB_USERS=octocat/' .env
+          for extra in "" :compose.sso.yaml :compose.mcp-oauth.yaml :compose.sso.yaml:compose.mcp-oauth.yaml; do
             for tls in "" :compose.tls-files.yaml :compose.behind-proxy.yaml; do
               COMPOSE_FILE="compose.yaml$extra$tls" docker compose config -q
             done
           done
-          # Every Caddyfile with every certificate mode (a throwaway certificate for "files").
+          # Every Caddyfile with every certificate mode (a throwaway certificate for "files")
+          # and both ways /mcp signs in.
           mkdir certs
           openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -days 1 \
             -subj /CN=kanzo.example.com -keyout certs/privkey.pem -out certs/fullchain.pem
@@ -59,10 +61,13 @@ jobs:
           caddy_image="$(sed -n 's/^ *image: \(caddy:.*\)$/\1/p' compose.yaml)"
           for f in Caddyfile Caddyfile.sso; do
             for site in auto:kanzo.example.com files:kanzo.example.com none:http://kanzo.example.com; do
-              docker run --rm -v "$PWD/$f:/etc/caddy/Caddyfile:ro" -v "$PWD/certs:/certs:ro" \
-                -e KANZO_TLS="${site%%:*}" -e KANZO_SITE="${site#*:}" -e KANZO_AUTH_USER=admin \
-                -e 'KANZO_AUTH_HASH=$2a$14$x6vR96bhmUhdmyhb9UWMt.LhAHA3xKDsT1YOkGQXYhUcaEroG2Dw2' \
-                "$caddy_image" caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+              for mcp in basic oauth; do
+                docker run --rm -v "$PWD/$f:/etc/caddy/Caddyfile:ro" -v "$PWD/certs:/certs:ro" \
+                  -e KANZO_TLS="${site%%:*}" -e KANZO_SITE="${site#*:}" -e KANZO_MCP_AUTH="$mcp" \
+                  -e KANZO_DOMAIN=kanzo.example.com -e KANZO_AUTH_USER=admin \
+                  -e 'KANZO_AUTH_HASH=$2a$14$x6vR96bhmUhdmyhb9UWMt.LhAHA3xKDsT1YOkGQXYhUcaEroG2Dw2' \
+                  "$caddy_image" caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+              done
             done
           done
           rm -r .env certs
@@ -226,10 +231,128 @@ jobs:
           subject-digest: ${{ steps.release.outputs.digest }}
           push-to-registry: true
 
+  # sigbit/mcp-auth-proxy for compose.mcp-oauth.yaml: built from its pinned commit, tested,
+  # scanned, and published as ghcr.io/<owner>/kanzo-mcp-auth (version = UPSTREAM_VERSION).
+  mcp-auth-image:
+    name: image (mcp-auth)
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read       # checkout
+      packages: write      # push to GHCR
+      id-token: write      # sign the build provenance attestation
+      attestations: write  # store the attestation
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Resolve version
+        id: v
+        run: |
+          v="$(sed -n 's/^ARG UPSTREAM_VERSION=//p' mcp-auth/Dockerfile)"
+          echo "$v" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || { echo "bad version '$v'"; exit 1; }
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          # Published only from main and release tags, never from a PR or another branch.
+          case "$GITHUB_EVENT_NAME:$GITHUB_REF" in
+            pull_request:*) publish=false ;;
+            *:refs/heads/main|*:refs/tags/v*) publish=true ;;
+            *) publish=false ;;
+          esac
+          echo "publish=$publish" >> "$GITHUB_OUTPUT"
+          echo "image=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/kanzo-mcp-auth" >> "$GITHUB_OUTPUT"
+
+      # The Go build cross-compiles natively; QEMU only runs the arm64 smoke test.
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+        with:
+          platforms: arm64
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        id: meta
+        with:
+          images: ${{ steps.v.outputs.image }}
+          flavor: |
+            latest=false
+          tags: |
+            type=semver,pattern={{version}},value=v${{ steps.v.outputs.version }}
+            type=semver,pattern={{major}}.{{minor}},value=v${{ steps.v.outputs.version }}
+            type=raw,value=latest
+            type=sha,format=short
+          labels: |
+            org.opencontainers.image.title=mcp-auth-proxy for Kanzo
+            org.opencontainers.image.version=${{ steps.v.outputs.version }}
+            org.opencontainers.image.licenses=MIT
+
+      - name: Build (amd64, for tests)
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: mcp-auth
+          platforms: linux/amd64
+          load: true
+          tags: kanzo-mcp-auth:ci
+          cache-from: type=gha,scope=mcp-auth
+          cache-to: type=gha,scope=mcp-auth,mode=max
+
+      - name: Smoke test (amd64)
+        run: tests/smoke-mcp-auth.sh kanzo-mcp-auth:ci linux/amd64
+
+      - name: Trivy scan
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: kanzo-mcp-auth:ci
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
+          format: table
+
+      - name: Build (arm64, for tests)
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: mcp-auth
+          platforms: linux/arm64
+          load: true
+          tags: kanzo-mcp-auth:ci-arm64
+          cache-from: type=gha,scope=mcp-auth
+          cache-to: type=gha,scope=mcp-auth,mode=max
+
+      - name: Smoke test (arm64, emulated)
+        run: SMOKE_PORT=8098 tests/smoke-mcp-auth.sh kanzo-mcp-auth:ci-arm64 linux/arm64
+
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        if: steps.v.outputs.publish == 'true'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build (multi-arch) and push
+        id: release
+        if: steps.v.outputs.publish == 'true'
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: mcp-auth
+          platforms: ${{ env.PLATFORMS }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          annotations: ${{ steps.meta.outputs.annotations }}
+          provenance: mode=max
+          sbom: true
+          cache-from: type=gha,scope=mcp-auth
+          cache-to: type=gha,scope=mcp-auth,mode=max
+
+      - name: Attest build provenance
+        if: steps.v.outputs.publish == 'true'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ steps.v.outputs.image }}
+          subject-digest: ${{ steps.release.outputs.digest }}
+          push-to-registry: true
+
   # A tag vX.Y.Z publishes a GitHub Release with the production deploy bundle.
   release:
     name: release
-    needs: [deploy, image]
+    needs: [deploy, image, mcp-auth-image]
     if: github.ref_type == 'tag'
     runs-on: ubuntu-24.04
     permissions:
