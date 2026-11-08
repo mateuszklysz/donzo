@@ -15,7 +15,7 @@ people and agents you chose ever reach it.
 
 | Layer | What protects it |
 | --- | --- |
-| Network | Kanzo has no published port and sits on an `internal` Docker network with no internet access. Only Caddy publishes ports (80, 443). |
+| Network | Kanzo has no published port and sits on an `internal` Docker network with no internet access. Only Caddy publishes ports (80, 443; behind your own proxy only `127.0.0.1:8080`). |
 | Sign-in | Board: GitHub sign-in through oauth2-proxy, limited to the logins in `GITHUB_USERS` (plus an org or teams if set), or basic auth. `/mcp`: basic auth with a long random password (bcrypt, cost 14). |
 | Sessions | `__Host-` cookie: Secure, HttpOnly, SameSite=Lax, host-only, 24 h; the GitHub token is checked again every hour; per-request CSRF cookies during sign-in; redirects only back to the same host. |
 | Requests | Kanzo answers only to its own host name, rejects any foreign `Origin` (cross-site requests), and its "this computer only" endpoints refuse proxied requests. Caddy forwards neither its credentials nor the session cookie to Kanzo and caps request bodies at 25 MB. |

@@ -44,6 +44,9 @@ services:
       - "443:443/udp"
     environment:
       KANZO_DOMAIN: ${KANZO_DOMAIN}
+      # The site Caddy serves; compose.behind-proxy.yaml changes it to plain HTTP.
+      KANZO_SITE: ${KANZO_DOMAIN}
+      KANZO_TLS: auto
       KANZO_AUTH_USER: ${KANZO_AUTH_USER:?set KANZO_AUTH_USER in .env}
       KANZO_AUTH_HASH: ${KANZO_AUTH_HASH:?set KANZO_AUTH_HASH in .env}
     volumes:

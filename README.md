@@ -40,7 +40,9 @@ Open http://localhost:4242. Keep the host port equal to the container port
 
 You need a Linux server with Docker Engine and the Compose plugin, a DNS name
 (for example `kanzo.example.com`) with an A/AAAA record pointing at the server,
-and ports 80/tcp, 443/tcp and 443/udp open.
+and ports 80/tcp, 443/tcp and 443/udp open. Does the domain already have a certificate,
+or does another proxy already run HTTPS on the server? See
+[Use a certificate you already have](#use-a-certificate-you-already-have).
 
 1. Get the deploy files: download `donzo-deploy-v0.4.1.tar.gz` from the
    [latest release](https://github.com/mateuszklysz/donzo/releases/latest) and
@@ -117,9 +119,74 @@ browser sign-in.
    with GitHub that the user's token still works, so revoking the app in GitHub
    (Settings → Applications) signs that user out within the hour.
 
+The sign-in and error pages are styled like Kanzo (light and dark, with Kanzo's logo)
+and live in `deploy/sso-templates/`; the board shows one "Continue with GitHub" page
+before GitHub. Kanzo's `/logo.png` and `/icon.png` are reachable without signing in,
+for that page. The files must stay world-readable: oauth2-proxy runs as uid 65532.
+
 Removing someone from `GITHUB_USERS` (or the org/team) stops new sign-ins at once.
 To end their current session too, also change `OAUTH2_COOKIE_SECRET` and run
 `docker compose up -d` (this signs everyone out).
+
+### Use a certificate you already have
+
+By default Caddy gets a Let's Encrypt certificate for `KANZO_DOMAIN` by itself.
+If the domain already has HTTPS, pick the case that fits and add its file to
+`COMPOSE_FILE` in `.env` (after `compose.sso.yaml` when you use GitHub sign-in).
+Sign-in, `/mcp` and all checks work the same in every case.
+
+**Your own certificate files** (a wildcard, a company CA, a Cloudflare origin
+certificate, ...): Caddy keeps ports 80 and 443 and uses your files instead of
+Let's Encrypt.
+
+```sh
+# .env
+COMPOSE_FILE=compose.yaml:compose.tls-files.yaml
+```
+
+Put the full chain and the key in `deploy/certs/` as `fullchain.pem` and `privkey.pem`
+(or set `KANZO_CERTS_DIR` to their folder). Copy real files, not certbot's
+`live/` symlinks, which point outside the folder. After each renewal run
+`docker compose restart caddy`.
+
+**Another reverse proxy already does HTTPS on the server** (nginx, Traefik, another
+Caddy): Caddy gives up ports 80/443, serves plain HTTP on `127.0.0.1:8080` only and
+keeps the sign-in; your proxy forwards the domain to it.
+
+```sh
+# .env
+COMPOSE_FILE=compose.yaml:compose.behind-proxy.yaml
+#KANZO_HTTP_BIND=127.0.0.1   # change only if the proxy runs on another host or network
+#KANZO_HTTP_PORT=8080
+```
+
+Your proxy must pass the original `Host`, append `X-Forwarded-For`, allow 25 MB
+uploads and not buffer responses (MCP streams them). For nginx:
+
+```nginx
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name kanzo.example.com;
+    ssl_certificate     /etc/ssl/kanzo/fullchain.pem;
+    ssl_certificate_key /etc/ssl/kanzo/privkey.pem;
+    client_max_body_size 25m;
+
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_http_version 1.1;
+        proxy_buffering off;
+        proxy_read_timeout 1h;
+    }
+}
+```
+
+Caddy takes the visitor's address from the last `X-Forwarded-For` entry your proxy
+adds, so a visitor can't fake it. Serve the board only over HTTPS: the GitHub sign-in
+cookie and Kanzo's checks expect the browser to see `https://`.
 
 ## Connect coding agents
 
@@ -236,7 +303,7 @@ tests/smoke.sh kanzo:local-git linux/amd64                                      
 | Path | |
 | --- | --- |
 | `Dockerfile`, `docker-entrypoint.sh` | the image |
-| `deploy/` | production stack: `compose.yaml`, `Caddyfile`, `.env.example`; GitHub sign-in: `compose.sso.yaml`, `Caddyfile.sso` |
+| `deploy/` | production stack: `compose.yaml`, `Caddyfile`, `.env.example`; GitHub sign-in: `compose.sso.yaml`, `Caddyfile.sso`, `sso-templates/`; own certificate: `compose.tls-files.yaml`; behind another proxy: `compose.behind-proxy.yaml` |
 | `tests/smoke.sh` | smoke test run in CI on amd64 and arm64 |
 | `SECURITY.md` | security model, hardening, reporting a vulnerability |
 | `.github/workflows/build.yml` | build, test, scan, push to GHCR; release on `v*` tags |

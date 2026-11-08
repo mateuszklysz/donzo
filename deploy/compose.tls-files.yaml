@@ -1,0 +1,12 @@
+# Your own certificate instead of Let's Encrypt (a wildcard, a company CA,
+# a Cloudflare origin certificate, ...), on top of compose.yaml. Enable it in .env with
+#   COMPOSE_FILE=compose.yaml:compose.tls-files.yaml
+# (add :compose.sso.yaml before it for GitHub sign-in). Put the certificate chain and
+# its key in KANZO_CERTS_DIR (default ./certs) as fullchain.pem and privkey.pem, and run
+# `docker compose restart caddy` after every renewal: Caddy reads them at start.
+services:
+  caddy:
+    environment:
+      KANZO_TLS: files
+    volumes:
+      - ${KANZO_CERTS_DIR:-./certs}:/certs:ro

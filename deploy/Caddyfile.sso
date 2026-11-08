@@ -3,14 +3,54 @@
 # internet and the board:
 #   - the board in a browser: GitHub sign-in through oauth2-proxy
 #   - /mcp (coding agents, which can't do a browser sign-in): basic auth
-{$KANZO_DOMAIN} {
+
+# Global options. Behind another HTTPS proxy (compose.behind-proxy.yaml) the client's
+# address comes from the X-Forwarded-For that proxy appends (the rightmost entry it did
+# not add itself, so a client can't spoof it); otherwise no proxy is trusted.
+{
+	servers {
+		trusted_proxies static {$KANZO_TRUSTED_PROXIES:127.0.0.1/32}
+		trusted_proxies_strict
+	}
+}
+
+# How the site gets its certificate (KANZO_TLS, set by the compose files):
+#   auto  - Let's Encrypt, automatically (default)
+#   files - your own certificate: certs/fullchain.pem + certs/privkey.pem (compose.tls-files.yaml)
+#   none  - plain HTTP, another proxy in front does HTTPS (compose.behind-proxy.yaml)
+(tls-auto) {
+}
+(tls-files) {
+	tls /certs/fullchain.pem /certs/privkey.pem
+}
+(tls-none) {
+}
+
+{$KANZO_SITE} {
+	import tls-{$KANZO_TLS:auto}
 	encode zstd gzip
 
-	# The sign-in flow itself (/oauth2/start, /oauth2/callback, ...).
+	# The sign-in flow itself (/oauth2/sign_in, /oauth2/start, /oauth2/callback, ...).
+	# Its pages (sso-templates/) only need inline styles, one inline script and Kanzo's logo.
 	handle /oauth2/* {
+		header Content-Security-Policy "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; script-src 'sha256-Er/PJ9YxvrYgxkuCEAvtzvvw9qL34LVCd95TcjrC6NE='; form-action 'self' https://github.com; base-uri 'none'; frame-ancestors 'none'"
 		reverse_proxy oauth2-proxy:4180 {
-			header_up X-Real-IP {remote_host}
+			header_up X-Real-IP {client_ip}
 			header_up X-Forwarded-Uri {uri}
+		}
+	}
+
+	# Kanzo's logo for the sign-in page: two static images, nothing else, without a session.
+	@logo {
+		method GET HEAD
+		path /logo.png /icon.png
+	}
+	handle @logo {
+		reverse_proxy kanzo:4242 {
+			header_up Host {host}
+			header_up -Authorization
+			header_up -Cookie
+			header_up -X-Kanzo-Computer
 		}
 	}
 
@@ -36,10 +76,10 @@
 	handle {
 		forward_auth oauth2-proxy:4180 {
 			uri /oauth2/auth
-			header_up X-Real-IP {remote_host}
+			header_up X-Real-IP {client_ip}
 			@unauthorized status 401
 			handle_response @unauthorized {
-				redir * /oauth2/sign_in?rd={scheme}://{host}{uri}
+				redir * /oauth2/sign_in?rd={uri}
 			}
 		}
 		reverse_proxy kanzo:4242 {
