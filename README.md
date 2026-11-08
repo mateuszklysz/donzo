@@ -191,6 +191,7 @@ tests/smoke.sh kanzo:local-git linux/amd64                                      
 | `tests/smoke.sh` | smoke test run in CI on amd64 and arm64 |
 | `.github/workflows/build.yml` | build, test, scan, push to GHCR; release on `v*` tags |
 | `.github/workflows/upstream.yml` | daily check for a new Kanzo release |
+| `.github/workflows/ai-rules.yml`, `scripts/` | rules on AI tools in commits and pull requests ([CONTRIBUTING.md](CONTRIBUTING.md)) |
 
 ## License
 
