@@ -113,7 +113,12 @@ browser sign-in.
    | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | from the OAuth app |
    | `OAUTH2_COOKIE_SECRET` | output of `openssl rand -base64 32 \| tr -- '+/' '-_'` |
    | `GITHUB_USERS` | GitHub logins allowed in, comma-separated (required) |
-   | `GITHUB_ORG`, `GITHUB_TEAM` | optional: also allow an org's members, or teams as `org:team,...` |
+   | `GITHUB_ORG`, `GITHUB_TEAM` | optional: also allow an org's members, or teams as `org:team,...`; then also set `GITHUB_SCOPE=user:email read:org` |
+
+   Sign-in asks GitHub only for read access to the account's email addresses
+   (`user:email`), plus organization membership (`read:org`) when you set `GITHUB_SCOPE` for
+   an org or team. The OAuth app needs no other permissions; on GitHub's consent screen
+   don't grant it access to any organization unless you use `GITHUB_ORG`/`GITHUB_TEAM`.
 
 3. `docker compose up -d`. A session lasts 24 hours; every hour oauth2-proxy checks
    with GitHub that the user's token still works, so revoking the app in GitHub
