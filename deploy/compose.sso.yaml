@@ -10,7 +10,7 @@ services:
       - ./Caddyfile.sso:/etc/caddy/Caddyfile:ro
 
   oauth2-proxy:
-    image: quay.io/oauth2-proxy/oauth2-proxy:v7.15.5
+    image: quay.io/oauth2-proxy/oauth2-proxy:v7.15.5@sha256:8498b0d0ef0a7b29686414000a08aee467f02d0299c9ed1e006a8f33fc017916
     restart: unless-stopped
     read_only: true
     cap_drop: [ALL]
@@ -37,9 +37,14 @@ services:
       OAUTH2_PROXY_COOKIE_NAME: __Host-kanzo_session
       OAUTH2_PROXY_COOKIE_SECURE: "true"
       OAUTH2_PROXY_COOKIE_SAMESITE: lax
-      OAUTH2_PROXY_COOKIE_EXPIRE: 168h
+      # A session lasts a day; every hour oauth2-proxy checks with GitHub that the
+      # token still works, so revoking the app's access signs the user out.
+      OAUTH2_PROXY_COOKIE_EXPIRE: 24h
+      OAUTH2_PROXY_COOKIE_REFRESH: 1h
       OAUTH2_PROXY_COOKIE_CSRF_PER_REQUEST: "true"
       OAUTH2_PROXY_COOKIE_CSRF_EXPIRE: 15m
+      # No version banner on the sign-in pages.
+      OAUTH2_PROXY_FOOTER: "-"
     expose: ["4180"]
     # `public`: it calls the GitHub API to check who signed in.
     networks: [internal, public]

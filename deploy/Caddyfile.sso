@@ -23,6 +23,11 @@
 		reverse_proxy kanzo:4242 {
 			header_up Host {host}
 			header_up Origin ^https:// http://
+			# Kanzo has no use for the proxy's credentials or session cookie, and a client
+			# must not pick the name Kanzo shows for a "guest computer".
+			header_up -Authorization
+			header_up -Cookie
+			header_up -X-Kanzo-Computer
 			flush_interval -1
 		}
 	}
@@ -45,13 +50,32 @@
 			# so only the scheme is rewritten: a foreign origin (https://evil.example)
 			# becomes http://evil.example and is still rejected by Kanzo.
 			header_up Origin ^https:// http://
+			# Kanzo has no use for the proxy's credentials or session cookie, and a client
+			# must not pick the name Kanzo shows for a "guest computer".
+			header_up -Authorization
+			header_up -Cookie
+			header_up -X-Kanzo-Computer
 			flush_interval -1
 		}
 	}
 
+	# Kanzo sends its own strict Content-Security-Policy; these cover every response,
+	# including the sign-in and error pages.
 	header {
-		Strict-Transport-Security "max-age=31536000"
+		Strict-Transport-Security "max-age=63072000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+		Cross-Origin-Opener-Policy "same-origin"
+		Cross-Origin-Resource-Policy "same-origin"
 		-Server
+		-Via
+	}
+
+	# Image uploads are the largest requests Kanzo takes.
+	request_body {
+		max_size 25MB
 	}
 
 	log {

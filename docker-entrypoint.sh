@@ -5,6 +5,8 @@
 # environment variable for it, so the first start writes a config.toml that
 # listens on all interfaces. An existing config.toml is never overwritten.
 set -eu
+# The board's database, images and config are readable by the kanzo user only.
+umask 077
 
 KANZO_HOME="${KANZO_HOME:-/data}"
 KANZO_PORT="${KANZO_PORT:-4242}"
