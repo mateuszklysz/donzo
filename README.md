@@ -1,295 +1,200 @@
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/img/kanzo-dark.jpg">
-    <img alt="kanzo: a tiny kanban board for you and your coding agents" src="docs/img/kanzo-light.jpg">
-  </picture>
-</p>
+# donzo: Kanzo in Docker
 
-<p align="center">
-  <a href="https://github.com/emanuele-em/kanzo/actions/workflows/ci.yml"><img src="https://github.com/emanuele-em/kanzo/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://crates.io/crates/kanzo"><img src="https://img.shields.io/crates/v/kanzo" alt="crates.io"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue" alt="AGPL-3.0"></a>
-</p>
+Production-ready, multi-arch (`linux/amd64`, `linux/arm64`) container image for
+[Kanzo](https://github.com/emanuele-em/kanzo), the kanban board and MCP server for
+you and your coding agents, plus a ready HTTPS deployment (Caddy with automatic
+Let's Encrypt certificates and a password). Unofficial: not affiliated with the
+Kanzo project.
 
-<p align="center">
-  English | <a href="README.zh.md">简体中文</a>
-</p>
-
-Kanzo is a kanban board in your browser and an MCP server in one 4.7 MB program, so you and your coding agents work on the same tasks: on one computer, or on one board shared by all of them. No account, no server, no setup: run `kanzo` and it works.
-
-You never edit a file. Everything is done in one of three places:
-
-- **the board**, in your browser, for you;
-- **MCP**, for your agents: they take tasks, move cards and comment;
-- **the `kanzo` command**, for the terminal and scripts.
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/img/board-dark.gif">
-  <img alt="The Kanzo board: agents move cards while you watch, ⌘K finds a task in any project, a task is made to wait on another, two selected tasks are dragged together, a list groups the tasks by status, the sidebar folds, Laptop A shares the board and Laptop B joins it" src="docs/img/board-light.gif">
-</picture>
-
-## Install
-
-> [!TIP]
-> **Just ask your agent:** *"install Kanzo from github.com/emanuele-em/kanzo."*
-
-```sh
-curl -LsSf https://github.com/emanuele-em/kanzo/releases/latest/download/kanzo-installer.sh | sh
-```
-
-For macOS and Linux, including every Raspberry Pi. On Windows, in PowerShell:
-
-```powershell
-powershell -ExecutionPolicy Bypass -c "irm https://github.com/emanuele-em/kanzo/releases/latest/download/kanzo-installer.ps1 | iex"
-```
-
-Both add Kanzo to your `PATH`, for terminals you open from then on. To use it in the one you installed from, run `source $HOME/.cargo/env` (`env.fish` in fish), or open a new one.
-
-Or download the Windows zip from the [latest release](https://github.com/emanuele-em/kanzo/releases/latest) and put `kanzo.exe` in a folder named `bin` on your `PATH`, like `%USERPROFILE%\.cargo\bin`: the board updates itself only there.
-
-Every release is signed by GitHub: check a download with `gh attestation verify <file> --repo emanuele-em/kanzo`. Or with Cargo:
-
-```sh
-cargo install kanzo
-```
-
-## Start
-
-> [!TIP]
-> **Just ask your agent:** *"start Kanzo and keep it running at login."*
-
-```sh
-kanzo
-```
-
-The board opens at http://localhost:4242. That's all the setup there is: the first run creates `~/kanzo`, and the whole board lives in it.
-
-| Key | Does |
+| Image | Contents |
 | --- | --- |
-| `n` | New task |
-| `/` or `⌘K` | Search every project |
-| `f` | Filter the board; `↵` keeps the filter |
-| `Tab` | Move to the description |
-| `⌘↵` | Save and close |
-| `Esc` | Keep what you typed in a description or tags; cancel other fields |
+| `ghcr.io/mateuszklysz/kanzo:0.4.1` | Kanzo on Alpine, about 14 MB |
+| `ghcr.io/mateuszklysz/kanzo:0.4.1-git` | the same plus `git` and `openssh-client`, for `kanzo sync` |
 
-## Use the board
+Tags: `X.Y.Z`, `X.Y` and `latest` (each also with `-git`), and `sha-<commit>`.
+The binary is built from the upstream git tag as a static musl binary. Images are
+rebuilt every week for Alpine security fixes, and a new Kanzo release is picked up
+automatically within a day (new image tags and a new
+[GitHub Release](https://github.com/mateuszklysz/donzo/releases)).
 
-> [!TIP]
-> **Just ask your agent:** *"mark kanzo#12 as human, and set its URL to github.com/acme/api/pull/482."*
+> [!WARNING]
+> Kanzo has **no logins**. Anyone who reaches its port can read and change the
+> board and use its MCP endpoint. Never publish port 4242 on a public server: run
+> it behind the proxy in [`deploy/`](deploy), which adds HTTPS and a password.
 
-- **Select tasks:** `⌘`-click them, or drag on empty board space, then move, tag or delete them together. Drag one and the rest follow.
-- **List view:** the list icon shows the same tasks as rows to sort and group.
-- **Human tasks:** mark a task Human and agents leave it to you. The person icon shows only those.
-- **Images:** paste or drop one into a task or a comment.
-- **Links:** give a task a URL, like its pull request, and open it from its card. Agents set it with `url`.
-- **Files:** `[name](file:///path)` in a description or comment opens in your editor.
-- **Task panel:** drag its left edge to resize it, or expand it to the whole window. Double-click the edge to reset it.
-- **Sidebar:** the panel button beside search folds it to its icons. Drag a project to reorder the list, for everyone on a shared board.
-- **App:** in Chrome or Edge, **Install app** at the bottom of the sidebar makes the board an app of its own. `⌘1`–`⌘8` pick a project, `⌘9` the last one, `⌘0` all of them. On macOS, `kanzo` then opens it instead of a tab, on the default port.
-- **Updates:** when a new version is out, the sidebar offers it. One click installs it.
-
-## Connect your agents
-
-> [!TIP]
-> **Just ask your agent:** *"add Kanzo as your MCP server,"* then restart it.
+## Try it locally
 
 ```sh
-claude mcp add kanzo --scope user -- kanzo mcp   # Claude Code
-codex mcp add kanzo -- kanzo mcp                 # Codex
+docker run --rm -p 127.0.0.1:4242:4242 -v kanzo-data:/data ghcr.io/mateuszklysz/kanzo:latest
 ```
 
-Other MCP clients: run `kanzo mcp` (apps like Raycast need the full path, from `which kanzo`), or use the running board at `http://localhost:4242/mcp`.
+Open http://localhost:4242. Keep the host port equal to the container port
+(`4242`): Kanzo rejects requests whose `Host` header carries another port.
 
-Then ask: *"take the next task from kanzo and do it."* The agent:
+## Run it in production
 
-- finds the project from the git remote of its repo; link more repos from the project's ⋯ menu;
-- moves the card to `doing` and comments as it works;
-- on `review`, comments how to resume its session.
+You need a Linux server with Docker Engine and the Compose plugin, a DNS name
+(for example `kanzo.example.com`) with an A/AAAA record pointing at the server,
+and ports 80/tcp, 443/tcp and 443/udp open.
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/img/task-dark.jpg">
-  <img alt="A task open on the board, with Claude Code's comments, one saying how to resume its session, and a reply" src="docs/img/task-light.jpg">
-</picture>
+1. Get the deploy files: download `donzo-deploy-v0.4.1.tar.gz` from the
+   [latest release](https://github.com/mateuszklysz/donzo/releases/latest) and
+   unpack it on the server (or copy the [`deploy/`](deploy) folder of this repo).
 
-## Park ideas in a backlog
+   ```sh
+   tar xzf donzo-deploy-v0.4.1.tar.gz && cd donzo-deploy-v0.4.1
+   cp .env.example .env
+   ```
 
-Turn on Backlog in Settings for a column agents leave alone, until you move its tasks to `todo`.
+2. Create the password hash:
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/img/backlog-dark.jpg">
-  <img alt="The board with the Backlog column on, left of Todo" src="docs/img/backlog-light.jpg">
-</picture>
+   ```sh
+   docker run --rm caddy:2-alpine caddy hash-password --plaintext 'your-password'
+   ```
 
-## Make a task wait on others
+3. Edit `.env`:
 
-> [!TIP]
-> **Just ask your agent:** *"make kanzo#12 wait on #10 and #11."*
+   | Variable | Value |
+   | --- | --- |
+   | `KANZO_IMAGE` | `ghcr.io/mateuszklysz/kanzo:0.4.1` (pin a version) |
+   | `KANZO_DOMAIN` | your DNS name, e.g. `kanzo.example.com` |
+   | `KANZO_AUTH_USER` | login for the board and `/mcp` |
+   | `KANZO_AUTH_HASH` | the hash from step 2, **in single quotes** (it contains `$`) |
 
-- **Set it:** type in Waits on, in a task's panel, to find tasks in its project and pick them. Agents pass `waits_on`.
-- **Until those tasks are done:** `next_task` skips it, and its card is dimmed and says what it waits on. You can still move it yourself.
-- **What counts:** only `done`. A task in `review` still blocks.
-- **Find them:** filter by `is:waiting`.
+4. Start it and watch Caddy get the certificate:
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/img/waits-dark.jpg">
-  <img alt="A task's panel with log typed in Waits on, offering two tasks to pick, beside a dimmed card that says Waits on #7" src="docs/img/waits-light.jpg">
-</picture>
+   ```sh
+   docker compose up -d
+   docker compose logs -f caddy
+   ```
 
-## Filter and search
+Open `https://kanzo.example.com` and log in. What runs:
 
-> [!TIP]
-> **Just ask your agent:** *"take the next kanzo task tagged billing,"* or *"list what's left in kanzo with tag:billing."*
+```
+internet ──443──► caddy (HTTPS, basic auth) ──internal network──► kanzo:4242 ──► volume kanzo-data (/data)
+```
 
-The board's filter (`f`), search (`/`) and the `filter` of `list_tasks` and `next_task` all understand the same words, like on GitHub:
+The `kanzo` container has no published port and no internet access (the
+`internal` network), runs as uid 10001 with a read-only root filesystem, no
+capabilities and memory/pid limits. Do not add `ports:` to it.
 
-- Every part must match.
-- `-` negates a qualifier: `tag:billing -status:done`.
-- Qualifiers turn blue as you type them.
+## Connect coding agents
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/img/filter-dark.jpg">
-  <img alt="The board filtered by a saved tag:backend chip and is:waiting in the filter box, with the two matching tasks, each saying what it waits on" src="docs/img/filter-light.jpg">
-</picture>
+Agents reach the MCP endpoint at `https://<your domain>/mcp` with the same login:
 
-| Qualifier | Finds | Example |
+```sh
+claude mcp add --transport http kanzo https://kanzo.example.com/mcp \
+  --header "Authorization: Basic $(printf 'admin:your-password' | base64)"
+```
+
+Over HTTP Kanzo cannot see the agent's folder. Either the agent passes `project`
+to the tools, or a per-repo MCP config (`.mcp.json`) adds headers so Kanzo finds
+the project from the repo, as `kanzo mcp` does locally:
+
+```json
+{ "mcpServers": { "kanzo": {
+  "type": "http",
+  "url": "https://kanzo.example.com/mcp",
+  "headers": {
+    "Authorization": "Basic <base64 of user:password>",
+    "X-Kanzo-Folder": "/path/to/this/repo",
+    "X-Kanzo-Repos": "your-org/this-repo"
+  }
+} } }
+```
+
+`kanzo join` does **not** work through HTTPS (it speaks plain HTTP to port 4242).
+
+## Update
+
+Change the tag in `KANZO_IMAGE` in `.env`, then:
+
+```sh
+docker compose pull && docker compose up -d
+```
+
+The update button on the board does nothing in the container, on purpose: the
+image has no `curl`, so updates always come from a new image tag.
+
+## Backup and restore
+
+```sh
+# tasks as JSON (no images)
+docker compose exec kanzo kanzo export -f json > kanzo-$(date +%F).json
+
+# full copy of the data volume (database, images, config)
+docker compose stop kanzo
+docker run --rm -v kanzo_kanzo-data:/data -v "$PWD":/b alpine tar czf /b/kanzo-data-$(date +%F).tgz -C /data .
+docker compose start kanzo
+
+# restore that copy into the volume
+docker compose stop kanzo
+docker run --rm -v kanzo_kanzo-data:/data -v "$PWD":/b alpine sh -c 'tar xzf /b/kanzo-data-YYYY-MM-DD.tgz -C /data && chown -R 10001:10001 /data'
+docker compose start kanzo
+```
+
+### Sync to a git repo (`-git` image)
+
+1. Set `KANZO_IMAGE=ghcr.io/mateuszklysz/kanzo:0.4.1-git` in `.env`.
+2. Set `KANZO_GIT_TOKEN` to a fine-grained token with Contents read/write on one
+   private repository for the data.
+3. In `compose.yaml`, change the `kanzo` service to `networks: [internal, public]`
+   (the `internal` network has no internet access).
+4. `docker compose up -d`, then Settings → Sync on the board, or
+   `docker compose exec kanzo kanzo sync --repo https://github.com/<you>/kanzo-data`.
+
+The token is read from the environment when git asks for it; it is never written
+to disk or put in a URL.
+
+## Configuration
+
+| Variable | Default | |
 | --- | --- | --- |
-| `tag:` | that exact tag | `tag:bug`, `tag:"needs review"` |
-| `status:` | a column | `status:doing` |
-| `project:` | a project | `project:api` |
-| `title:`, `description:`, `url:`, `comment:` | text in that field | `title:login`, `comment:"on hold"` |
-| `id:`, `comments:`, `images:` | a number, or a range | `id:12`, `comments:>2`, `images:1..3` |
-| `created:`, `updated:` | a date, or a range | `created:2026-11-05`, `updated:<2026-01-31` |
-| `is:human` | tasks for you, not agents | `-is:human` |
-| `is:waiting` | tasks waiting on unfinished ones | `-is:waiting` |
-| `has:`, `no:` | `description`, `tags`, `url`, `comments` or `images` | `has:url`, `no:tags` |
+| `KANZO_PORT` | `4242` | Port inside the container. |
+| `KANZO_MCP_HTTP` | `true` | Serve MCP at `/mcp`. Only used when `config.toml` is first created. |
+| `KANZO_GIT_TOKEN` | – | `-git` image: token for `kanzo sync` over HTTPS. |
+| `KANZO_GIT_USER` | `x-access-token` | `-git` image: username sent with the token. |
 
-Anything else is plain text. Use quotes for a phrase, `"on hold"`, or to look for text that reads like a qualifier, `"tag:bug"`. Agents can't filter through a property you've hidden in Settings.
+Data lives in the `/data` volume: `kanzo.db`, `images/` and `config.toml`. On
+first start the container writes `config.toml` with `listen = "0.0.0.0"`; an
+existing file is never changed, so edit it there for other Kanzo settings. A
+bind-mounted folder must be owned by uid/gid `10001`. Run a single instance per
+volume: Kanzo uses SQLite and file locks.
 
-## Use it on several computers
+Kanzo only answers to `Host` names it knows (`localhost`, IP addresses and its own
+hostname), which is why `deploy/compose.yaml` sets `hostname: ${KANZO_DOMAIN}`.
+Caddy changes only the scheme of the `Origin` header (`https://` to `http://`), so
+Kanzo's cross-site request check still rejects foreign origins.
 
-Two ways, neither with any setup: share one board live, or sync it between machines.
+## Verify an image
 
-### Share it live
+Every pushed image has an SBOM and a signed build provenance attestation:
 
-> [!TIP]
-> **Just ask your agent:** *"share my Kanzo board"* on one computer, and *"join the Kanzo board at 192.168.1.20"* on the others.
-
-Several computers, one board, at the same time: everyone sees the same tasks, and every agent works on them.
-
-1. On the computer with the board, click the share icon next to New task and turn on **Share this board**. Copy an address it shows.
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/img/share-dark.jpg">
-  <img alt="The share popover on the computer with the board: sharing is on, with its addresses to copy and the computers connected" src="docs/img/share-light.jpg">
-</picture>
-
-2. On each other computer, click the share icon, paste the address and click **Join**.
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/img/join-dark.jpg">
-  <img alt="The share popover on another computer: connected to the shared board, with a Leave button" src="docs/img/join-light.jpg">
-</picture>
-
-Nothing restarts and nothing needs configuring. Their board shows the shared one, and their agents use it through the same `kanzo mcp`, still finding the project from the repo they work in. Turn sharing off, or click **Leave**, at any time.
-
-From a terminal, or for an agent, it's `kanzo share on` and `kanzo join <address>`, then `kanzo share off` and `kanzo leave`.
-
-The same two commands work wherever the board lives; only the address changes:
-
-**Your computer shares its board.** Others join it from theirs, on the same network.
-
-```mermaid
-flowchart LR
-  B["💻 Laptop B<br><code>kanzo#nbsp;join#nbsp;192.168.1.20</code>"] -- home network --> A["💻 Laptop A<br><i>192.168.1.20</i><br><code>kanzo#nbsp;share#nbsp;on</code>"]
+```sh
+gh attestation verify oci://ghcr.io/mateuszklysz/kanzo:0.4.1 --owner mateuszklysz
 ```
 
-**A Raspberry Pi keeps the board.** Every computer joins it, and none has to stay on.
+## Build it yourself
 
-```mermaid
-flowchart LR
-  A["💻 Laptop A<br><code>kanzo#nbsp;join#nbsp;192.168.1.50</code>"] -- home network --> pi["🍓 Raspberry Pi<br><i>192.168.1.50</i><br><code>kanzo#nbsp;share#nbsp;on</code>"]
-  B["💻 Laptop B<br><code>kanzo#nbsp;join#nbsp;192.168.1.50</code>"] -- home network --> pi
+```sh
+docker buildx build --platform linux/amd64,linux/arm64 -t kanzo:local .            # default image
+docker buildx build --platform linux/amd64 --target git -t kanzo:local-git --load .  # with git
+tests/smoke.sh kanzo:local-git linux/amd64                                          # needs curl on the host
 ```
 
-**The Raspberry Pi is somewhere else, over the internet.** Put a VPN on the Pi and on each computer, like [Tailscale](https://tailscale.com), [NetBird](https://netbird.io) or WireGuard: `kanzo share on` then shows the Pi's VPN address too.
+## Repository layout
 
-```mermaid
-flowchart LR
-  A["💻 Laptop A<br><code>kanzo#nbsp;join#nbsp;100.101.32.7</code>"] -- VPN --> net(("🌐 Internet"))
-  B["💻 Laptop B<br><code>kanzo#nbsp;join#nbsp;100.101.32.7</code>"] -- VPN --> net
-  net -- VPN --> pi["🍓 Raspberry Pi<br><i>100.101.32.7</i><br><code>kanzo#nbsp;share#nbsp;on</code>"]
-```
-
-On a Pi, `kanzo service install` keeps the board running after a restart. There are no logins: share only on a network you trust.
-
-### Sync it between machines
-
-> [!TIP]
-> **Just ask your agent:** *"sync my Kanzo board,"* or the first time, *"set up Kanzo sync with github.com/you/kanzo-data."*
-
-To carry the board between machines you use one at a time, a private git repo you own keeps it in step.
-
-1. [Create an empty private repo](https://github.com/new?name=kanzo-data&visibility=private) on GitHub, or anywhere git can push.
-2. Click Settings at the bottom of the sidebar, choose Sync and paste its URL. Kanzo makes `~/kanzo` a git repo and pushes the board.
-3. On each other machine, do the same with the same URL: Kanzo offers to use the board that's already there.
-
-From then on, choose Sync, or run `kanzo sync`, when you switch machines. It commits the board and pulls or pushes it, and it's safe while the board and your agents are running. If both machines changed the board, Kanzo asks which one to keep. To move to another repo, change it in Settings, under Sync.
-
-## Commands
-
-| Command | Does |
+| Path | |
 | --- | --- |
-| `kanzo` | Starts the board at http://localhost:4242 and opens it; `--port` for another port, `--no-open` to not open it |
-| `kanzo service install` | Keeps the board running and starts it at login; `uninstall` removes it |
-| `kanzo mcp` | The MCP server for agents: they start it, not you |
-| `kanzo share on` | Shares the board with the other computers on your network; `off` stops, while the board keeps running |
-| `kanzo join <ip>` | Uses the board another computer shares, from this one's board and agents; `kanzo leave` goes back |
-| `kanzo sync` | Commits the board and pulls or pushes it; `--repo <url>` sets the repo, `--keep-local` or `--keep-remote` when both sides changed |
-| `kanzo export` | Prints the board as Markdown; `-f json` for JSON, `-p <project>` for one project, `-o <file>` to save it |
-| `kanzo update` | Installs the latest release and restarts the board's service; the board offers new versions too |
-| `kanzo init` | Creates the data folder; the first run does this too |
-| `kanzo --version` | Prints the version |
-
-Every command takes `--home <dir>` to use another data folder.
-
-## Settings
-
-> [!TIP]
-> **Just ask your agent:** *"run Kanzo on port 4300."*
-
-Everything lives in `~/kanzo`: the board in `kanzo.db`, settings in `config.toml`. You never need to open either; use another folder with `--home` or `KANZO_HOME`.
-
-```toml
-port = 4242
-listen = "127.0.0.1"   # sharing opens the board to your network; "0.0.0.0" keeps it open
-mcp_http = true        # MCP at /mcp
-editor = "/usr/local/bin/cursor"   # opens file:/// links; on macOS, your text editor without it
-```
-
-These settings stay on each machine: `kanzo sync` leaves them out.
-
-Settings on the board:
-
-- **Task properties:** turn one off, like tags or comments, to hide it there and leave it out of what agents get. Nothing is deleted.
-- **Language:** English or Chinese, under Board.
-- **What's new:** this version's notes, under About.
-
-## Small and fast
-
-| | |
-| --- | --- |
-| Program | 4.7 MB, SQLite included |
-| Memory | 5 MB idle, 12 MB with 3,000 tasks |
-| Start | 3 ms |
-| Board of 3,000 tasks | 17 ms to load in the browser |
-| Agents' tool list | about 1,000 tokens, once per session |
-| Agents' replies | 10 to 60 tokens of plain text |
-
-Measured on an Apple M4.
+| `Dockerfile`, `docker-entrypoint.sh` | the image |
+| `deploy/` | production stack: `compose.yaml`, `Caddyfile`, `.env.example` |
+| `tests/smoke.sh` | smoke test run in CI on amd64 and arm64 |
+| `.github/workflows/build.yml` | build, test, scan, push to GHCR; release on `v*` tags |
+| `.github/workflows/upstream.yml` | daily check for a new Kanzo release |
 
 ## License
 
-[AGPL-3.0](LICENSE): use it, change it and share it; if you offer a changed version over a network, share its source too. To help, see [CONTRIBUTING](.github/CONTRIBUTING.md).
-
-<sub>mcp-name: io.github.emanuele-em/kanzo</sub>
+The files in this repository are under the [MIT license](LICENSE). Kanzo itself,
+and so the binary in the image, is AGPL-3.0-only; its source is at
+https://github.com/emanuele-em/kanzo (the image is built from the tag in the
+`org.opencontainers.image.version` label).

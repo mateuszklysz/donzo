@@ -1,0 +1,215 @@
+# Builds the Kanzo image for linux/amd64 + linux/arm64, tests it, and pushes it to GHCR.
+#
+# - pull_request: build + scan + smoke test, no push
+# - push to main: build, test, push (version = KANZO_VERSION in the Dockerfile)
+# - push of a tag vX.Y.Z (or vX.Y.Z-N): the same, then a GitHub Release with the deploy bundle
+# - weekly schedule: rebuild the same version to pick up Alpine security fixes
+# - workflow_dispatch: manual run (on main or on a release tag)
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+    paths: [Dockerfile, docker-entrypoint.sh, .dockerignore, tests/**, .github/workflows/build.yml]
+  pull_request:
+  schedule:
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  PLATFORMS: linux/amd64,linux/arm64
+
+jobs:
+  image:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+      id-token: write      # build provenance attestation
+      attestations: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: default
+            suffix: ""
+          - target: git
+            suffix: "-git"
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      image: ${{ steps.v.outputs.image }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Resolve version
+        id: v
+        run: |
+          v="$(sed -n 's/^ARG KANZO_VERSION=//p' Dockerfile)"
+          echo "$v" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || { echo "bad version '$v'"; exit 1; }
+          # A release tag must match the Kanzo version it ships (v0.4.1, or v0.4.1-2 for a repackage).
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            case "$GITHUB_REF_NAME" in
+              "v$v"|"v$v"-[0-9]*) ;;
+              *) echo "tag $GITHUB_REF_NAME does not match KANZO_VERSION $v"; exit 1 ;;
+            esac
+          fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          # GHCR names must be lowercase; the owner may not be.
+          echo "image=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/kanzo" >> "$GITHUB_OUTPUT"
+
+      # The build stage cross-compiles natively; QEMU is only needed for the
+      # few RUN steps of the arm64 runtime stage (apk add) and the arm64 smoke test.
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+        with:
+          platforms: arm64
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        id: meta
+        with:
+          images: ${{ steps.v.outputs.image }}
+          flavor: |
+            latest=false
+            suffix=${{ matrix.suffix }},onlatest=true
+          tags: |
+            type=semver,pattern={{version}},value=v${{ steps.v.outputs.version }}
+            type=semver,pattern={{major}}.{{minor}},value=v${{ steps.v.outputs.version }}
+            type=semver,pattern={{major}},value=v${{ steps.v.outputs.version }},enable=${{ !startsWith(steps.v.outputs.version, '0.') }}
+            type=raw,value=latest
+            type=sha,format=short
+          labels: |
+            org.opencontainers.image.version=${{ steps.v.outputs.version }}
+            org.opencontainers.image.licenses=AGPL-3.0-only
+
+      # 1) amd64 only, loaded into the runner's Docker for testing and scanning.
+      - name: Build (amd64, for tests)
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          target: ${{ matrix.target }}
+          platforms: linux/amd64
+          load: true
+          tags: kanzo:ci
+          cache-from: type=gha,scope=${{ matrix.target }}
+          cache-to: type=gha,scope=${{ matrix.target }},mode=max
+
+      - name: Smoke test (amd64)
+        run: tests/smoke.sh kanzo:ci linux/amd64
+
+      - name: Trivy scan
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: kanzo:ci
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
+          format: table
+
+      # 2) arm64 (runtime stage emulated, binary cross-compiled), smoke-tested under QEMU.
+      - name: Build (arm64, for tests)
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          target: ${{ matrix.target }}
+          platforms: linux/arm64
+          load: true
+          tags: kanzo:ci-arm64
+          cache-from: type=gha,scope=${{ matrix.target }}
+          cache-to: type=gha,scope=${{ matrix.target }},mode=max
+
+      - name: Smoke test (arm64, emulated)
+        run: SMOKE_PORT=4298 tests/smoke.sh kanzo:ci-arm64 linux/arm64
+
+      # 3) Push both platforms as one manifest list; every stage comes from the cache.
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        if: github.event_name != 'pull_request'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build (multi-arch) and push
+        id: release
+        if: github.event_name != 'pull_request'
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          target: ${{ matrix.target }}
+          platforms: ${{ env.PLATFORMS }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          annotations: ${{ steps.meta.outputs.annotations }}
+          provenance: mode=max
+          sbom: true
+          cache-from: type=gha,scope=${{ matrix.target }}
+          cache-to: type=gha,scope=${{ matrix.target }},mode=max
+
+      - name: Attest build provenance
+        if: github.event_name != 'pull_request'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ steps.v.outputs.image }}
+          subject-digest: ${{ steps.release.outputs.digest }}
+          push-to-registry: true
+
+  # A tag vX.Y.Z publishes a GitHub Release with the production deploy bundle.
+  release:
+    needs: image
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          V: ${{ needs.image.outputs.version }}
+          IMAGE: ${{ needs.image.outputs.image }}
+        run: |
+          bundle="donzo-deploy-$TAG"
+          mkdir "$bundle"
+          cp deploy/compose.yaml deploy/Caddyfile "$bundle/"
+          sed "s#^KANZO_IMAGE=.*#KANZO_IMAGE=$IMAGE:$V#" deploy/.env.example > "$bundle/.env.example"
+          tar czf "$bundle.tar.gz" "$bundle"
+          sha256sum "$bundle.tar.gz" > "$bundle.tar.gz.sha256"
+
+          cat > notes.md <<EOF
+          Kanzo $V ([upstream release](https://github.com/emanuele-em/kanzo/releases/tag/v$V)) as a multi-arch container image (linux/amd64, linux/arm64).
+
+          | Image | Contents |
+          | --- | --- |
+          | \`$IMAGE:$V\` | Kanzo on Alpine |
+          | \`$IMAGE:$V-git\` | + git and openssh-client, for \`kanzo sync\` |
+
+          \`\`\`sh
+          docker pull $IMAGE:$V
+          \`\`\`
+
+          Production: download \`$bundle.tar.gz\`, unpack it on the server and follow
+          [Run it in production](https://github.com/$GITHUB_REPOSITORY/blob/$TAG/README.md#run-it-in-production).
+
+          Verify an image: \`gh attestation verify oci://$IMAGE:$V --owner $GITHUB_REPOSITORY_OWNER\`
+          EOF
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$bundle.tar.gz" "$bundle.tar.gz.sha256" --clobber
+          else
+            gh release create "$TAG" "$bundle.tar.gz" "$bundle.tar.gz.sha256" \
+              --title "Kanzo $V" --notes-file notes.md --verify-tag
+          fi
