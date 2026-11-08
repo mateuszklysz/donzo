@@ -1,12 +1,12 @@
 [Unit]
 Description=Kanzo Kanban Board
-Documentation=https://github.com/mateuszklysz/donzo
+Documentation=https://github.com/nickyyOO/donzo
 After=network-online.target
 Wants=network-online.target
 
 [Container]
 ContainerName=kanzo
-Image=ghcr.io/mateuszklysz/kanzo:latest
+Image=ghcr.io/nickyyoo/kanzo:latest
 # Kanzo answers only to Host names it knows: its container hostname is one of them.
 # Change this to your exact public domain (e.g. kanzo.example.com):
 HostName=kanzo.example.com

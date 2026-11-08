@@ -3,7 +3,7 @@
 ## Reporting a vulnerability
 
 Please report it privately through
-[GitHub's private vulnerability reporting](https://github.com/mateuszklysz/donzo/security/advisories/new),
+[GitHub's private vulnerability reporting](https://github.com/nickyyOO/donzo/security/advisories/new),
 not in a public issue. A vulnerability in Kanzo itself belongs upstream:
 [emanuele-em/kanzo](https://github.com/emanuele-em/kanzo/security).
 

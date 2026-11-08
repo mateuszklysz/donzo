@@ -11,14 +11,14 @@ coding agents use the MCP endpoint with a password.
 
 | Image | Contents |
 | --- | --- |
-| `ghcr.io/mateuszklysz/kanzo:0.4.1` | Kanzo on Alpine, about 14 MB |
-| `ghcr.io/mateuszklysz/kanzo:0.4.1-git` | the same plus `git` and `openssh-client`, for `kanzo sync` |
+| `ghcr.io/nickyyoo/kanzo:0.4.1` | Kanzo on Alpine, about 14 MB |
+| `ghcr.io/nickyyoo/kanzo:0.4.1-git` | the same plus `git` and `openssh-client`, for `kanzo sync` |
 
 Tags: `X.Y.Z`, `X.Y` and `latest` (each also with `-git`), and `sha-<commit>`.
 The binary is built as a static musl binary from the upstream release, pinned by
 version and commit. Images are rebuilt every week with the latest Alpine security
 fixes. A new Kanzo release arrives as a pull request within a day and is published
-(image tags and a [GitHub Release](https://github.com/mateuszklysz/donzo/releases))
+(image tags and a [GitHub Release](https://github.com/nickyyOO/donzo/releases))
 only after it is reviewed, merged and tagged. See [SECURITY.md](SECURITY.md) for the
 security model.
 
@@ -30,7 +30,7 @@ security model.
 ## Try it locally
 
 ```sh
-docker run --rm -p 127.0.0.1:4242:4242 -v kanzo-data:/data ghcr.io/mateuszklysz/kanzo:latest
+docker run --rm -p 127.0.0.1:4242:4242 -v kanzo-data:/data ghcr.io/nickyyoo/kanzo:latest
 ```
 
 Open http://localhost:4242. Keep the host port equal to the container port
@@ -45,11 +45,11 @@ or does another proxy already run HTTPS on the server? See
 [Use a certificate you already have](#use-a-certificate-you-already-have).
 
 1. Get the deploy files: download `donzo-deploy-v0.4.1.tar.gz` from the
-   [latest release](https://github.com/mateuszklysz/donzo/releases/latest) and
+   [latest release](https://github.com/nickyyOO/donzo/releases/latest) and
    unpack it on the server (or copy the [`deploy/`](deploy) folder of this repo).
 
    ```sh
-   gh attestation verify donzo-deploy-v0.4.1.tar.gz --owner mateuszklysz   # optional
+   gh attestation verify donzo-deploy-v0.4.1.tar.gz --owner nickyyOO   # optional
    tar xzf donzo-deploy-v0.4.1.tar.gz && cd donzo-deploy-v0.4.1
    cp .env.example .env && chmod 600 .env   # .env holds secrets
    ```
@@ -66,7 +66,7 @@ or does another proxy already run HTTPS on the server? See
 
    | Variable | Value |
    | --- | --- |
-   | `KANZO_IMAGE` | `ghcr.io/mateuszklysz/kanzo:0.4.1` (pin a version) |
+   | `KANZO_IMAGE` | `ghcr.io/nickyyoo/kanzo:0.4.1` (pin a version) |
    | `KANZO_DOMAIN` | your DNS name, e.g. `kanzo.example.com` |
    | `KANZO_AUTH_USER` | login for the board and `/mcp` |
    | `KANZO_AUTH_HASH` | the hash from step 2, **in single quotes** (it contains `$`) |
@@ -253,7 +253,7 @@ docker compose start kanzo
 
 ### Sync to a git repo (`-git` image)
 
-1. Set `KANZO_IMAGE=ghcr.io/mateuszklysz/kanzo:0.4.1-git` in `.env`.
+1. Set `KANZO_IMAGE=ghcr.io/nickyyoo/kanzo:0.4.1-git` in `.env`.
 2. Set `KANZO_GIT_TOKEN` to a fine-grained token with Contents read/write on one
    private repository for the data.
 3. In `compose.yaml`, change the `kanzo` service to `networks: [internal, public]`
@@ -290,12 +290,12 @@ Every pushed image has an SBOM and a signed build provenance attestation, and so
 does the release's deploy bundle:
 
 ```sh
-gh attestation verify oci://ghcr.io/mateuszklysz/kanzo:0.4.1 --owner mateuszklysz
-gh attestation verify donzo-deploy-v0.4.1.tar.gz --owner mateuszklysz
+gh attestation verify oci://ghcr.io/nickyyoo/kanzo:0.4.1 --owner nickyyOO
+gh attestation verify donzo-deploy-v0.4.1.tar.gz --owner nickyyOO
 ```
 
-In production, pin the image by digest as well (`KANZO_IMAGE=ghcr.io/mateuszklysz/kanzo:0.4.1@sha256:…`; the digest is
-shown by `docker buildx imagetools inspect ghcr.io/mateuszklysz/kanzo:0.4.1`).
+In production, pin the image by digest as well (`KANZO_IMAGE=ghcr.io/nickyyoo/kanzo:0.4.1@sha256:…`; the digest is
+shown by `docker buildx imagetools inspect ghcr.io/nickyyoo/kanzo:0.4.1`).
 
 ## Build it yourself
 
