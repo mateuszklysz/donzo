@@ -5,7 +5,7 @@ name: kanzo
 
 services:
   kanzo:
-    image: ${KANZO_IMAGE:-ghcr.io/mateuszklysz/kanzo:latest}
+    image: ${KANZO_IMAGE:-ghcr.io/nickyyoo/kanzo:latest}
     # Kanzo answers only to Host names it knows: its container hostname is one of them.
     hostname: ${KANZO_DOMAIN:?set KANZO_DOMAIN in .env}
     restart: unless-stopped

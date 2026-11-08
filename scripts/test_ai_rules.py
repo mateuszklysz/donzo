@@ -88,7 +88,7 @@ class Identity(unittest.TestCase):
         self.assertTrue(ai_rules.identity_problems("author", "github-actions[bot]", "x@example.com"))
 
     def test_people(self):
-        self.assertEqual(ai_rules.identity_problems("author", "Mateusz Kłysz", "mateuszklysz@icloud.com"), [])
+        self.assertEqual(ai_rules.identity_problems("author", "Mateusz Kłysz", "nickyyOO@icloud.com"), [])
         self.assertEqual(ai_rules.identity_problems("committer", "GitHub", "noreply@github.com"), [])
 
     def test_strip(self):
