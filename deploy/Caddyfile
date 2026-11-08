@@ -1,7 +1,31 @@
 # Public HTTPS front for Kanzo. Kanzo has no logins of its own, so this proxy
 # is the only thing between the internet and the board: never remove basic_auth
 # (GitHub sign-in instead: Caddyfile.sso with compose.sso.yaml).
-{$KANZO_DOMAIN} {
+
+# Global options. Behind another HTTPS proxy (compose.behind-proxy.yaml) the client's
+# address comes from the X-Forwarded-For that proxy appends (the rightmost entry it did
+# not add itself, so a client can't spoof it); otherwise no proxy is trusted.
+{
+	servers {
+		trusted_proxies static {$KANZO_TRUSTED_PROXIES:127.0.0.1/32}
+		trusted_proxies_strict
+	}
+}
+
+# How the site gets its certificate (KANZO_TLS, set by the compose files):
+#   auto  - Let's Encrypt, automatically (default)
+#   files - your own certificate: certs/fullchain.pem + certs/privkey.pem (compose.tls-files.yaml)
+#   none  - plain HTTP, another proxy in front does HTTPS (compose.behind-proxy.yaml)
+(tls-auto) {
+}
+(tls-files) {
+	tls /certs/fullchain.pem /certs/privkey.pem
+}
+(tls-none) {
+}
+
+{$KANZO_SITE} {
+	import tls-{$KANZO_TLS:auto}
 	encode zstd gzip
 
 	basic_auth {

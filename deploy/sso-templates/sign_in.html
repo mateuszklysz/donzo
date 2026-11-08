@@ -1,0 +1,80 @@
+{{define "sign_in.html"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#f9f9f9">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#000000">
+<title>Sign in · Kanzo</title>
+<link rel="icon" href="/logo.png">
+<style>
+:root {
+  --bg: #f9f9f9; --card: #ffffff; --text: #0d0d0d; --muted: #5d5d5d; --faint: #8f8f8f;
+  --border: #e5e5e5; --field: #f4f4f4; --accent: #0d0d0d; --accent-text: #ffffff;
+  --danger: #dc2626; --danger-bg: rgba(220, 38, 38, .08); --shadow: 0 10px 30px rgba(0,0,0,.08);
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #000000; --card: #0b0b0b; --text: #ececec; --muted: #a1a1a1; --faint: #6e6e6e;
+    --border: #1f1f1f; --field: #171717; --accent: #ffffff; --accent-text: #000000;
+    --danger: #f87171; --danger-bg: rgba(248, 113, 113, .1); --shadow: 0 10px 30px rgba(0,0,0,.6);
+  }
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  background: var(--bg); color: var(--text);
+  font: 14px/1.5 ui-sans-serif, -apple-system, system-ui, "Segoe UI", "Helvetica Neue", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px 16px;
+}
+main {
+  width: 100%; max-width: 380px; background: var(--card); border: 1px solid var(--border);
+  border-radius: 16px; box-shadow: var(--shadow); padding: 36px 32px 28px; text-align: center;
+}
+.logo { width: 56px; height: 56px; display: block; margin: 0 auto 18px; }
+h1 { font-size: 22px; font-weight: 600; letter-spacing: -.01em; margin: 0 0 6px; }
+.lead { color: var(--muted); margin: 0 0 26px; }
+form { margin: 0; }
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 10px; width: 100%;
+  border: 0; border-radius: 99px; padding: 11px 18px; font: inherit; font-weight: 500; font-size: 15px;
+  background: var(--accent); color: var(--accent-text); cursor: pointer; text-decoration: none;
+}
+.btn:hover, .btn:focus-visible { opacity: .85; }
+.btn:focus { outline: none; }
+.btn.ghost { background: var(--field); color: var(--text); }
+.btn.ghost:hover, .btn.ghost:focus-visible { opacity: 1; background: var(--border); }
+.btn svg { width: 18px; height: 18px; flex: none; }
+.stack { display: grid; gap: 10px; }
+.note { color: var(--faint); font-size: 12px; margin: 18px 0 0; }
+.alert {
+  background: var(--danger-bg); color: var(--danger); border-radius: 12px; padding: 10px 12px;
+  margin: 0 0 18px; font-size: 13px; text-align: left;
+}
+.code { font-size: 44px; font-weight: 600; letter-spacing: -.02em; line-height: 1; margin: 0 0 10px; }
+.detail { color: var(--faint); font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11px; margin: 16px 0 0; word-break: break-all; }
+footer { color: var(--faint); font-size: 12px; margin-top: 18px; text-align: center; }
+</style>
+</head>
+<body>
+<main>
+  <img class="logo" src="/icon.png" alt="">
+  <h1>Sign in to Kanzo</h1>
+  <p class="lead">This board is private. Continue with your GitHub account.</p>
+  {{ if eq .StatusCode 400 401 }}
+  <p class="alert" role="alert">That sign-in didn't work. Try again, or use a GitHub account that has access to this board.</p>
+  {{ end }}
+  <form method="GET" action="{{.ProxyPrefix}}/start">
+    <input type="hidden" name="rd" value="{{.Redirect}}">
+    <button type="submit" class="btn"><svg viewBox="0 0 16 16" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg><span>Continue with GitHub</span></button>
+  </form>
+  <p class="note">Only approved GitHub accounts can open this board.</p>
+</main>
+{{ if and (ne .Footer "-") (ne .Footer "") }}<footer>{{.Footer}}</footer>{{ end }}
+<script>if(location.hash){for(var e=document.getElementsByName("rd"),i=0;i<e.length;i++)e[i].value=e[i].value.split("#")[0]+location.hash}</script>
+</body>
+</html>
+{{end}}

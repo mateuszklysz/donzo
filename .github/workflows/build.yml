@@ -28,8 +28,8 @@ env:
   PLATFORMS: linux/amd64,linux/arm64
 
 jobs:
-  # The production stack in deploy/: both compose variants resolve and both Caddyfiles are
-  # valid; the workflows pass zizmor's security audit; Dockerfile and compose files pass
+  # The production stack in deploy/: every compose combination resolves and both Caddyfiles
+  # are valid in every certificate mode; the workflows pass zizmor's security audit; Dockerfile and compose files pass
   # Trivy's misconfiguration scan.
   deploy:
     name: deploy and workflow checks
@@ -46,16 +46,26 @@ jobs:
           sed -i -e 's/^GITHUB_CLIENT_ID=$/GITHUB_CLIENT_ID=ci/' -e 's/^GITHUB_CLIENT_SECRET=$/GITHUB_CLIENT_SECRET=ci/' \
                  -e 's/^OAUTH2_COOKIE_SECRET=$/OAUTH2_COOKIE_SECRET=0123456789abcdef0123456789abcdef/' \
                  -e 's/^GITHUB_USERS=$/GITHUB_USERS=octocat/' .env
-          docker compose config -q
-          COMPOSE_FILE=compose.yaml:compose.sso.yaml docker compose config -q
+          for extra in "" :compose.sso.yaml; do
+            for tls in "" :compose.tls-files.yaml :compose.behind-proxy.yaml; do
+              COMPOSE_FILE="compose.yaml$extra$tls" docker compose config -q
+            done
+          done
+          # Every Caddyfile with every certificate mode (a throwaway certificate for "files").
+          mkdir certs
+          openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -days 1 \
+            -subj /CN=kanzo.example.com -keyout certs/privkey.pem -out certs/fullchain.pem
+          chmod 644 certs/*
           caddy_image="$(sed -n 's/^ *image: \(caddy:.*\)$/\1/p' compose.yaml)"
           for f in Caddyfile Caddyfile.sso; do
-            docker run --rm -v "$PWD/$f:/etc/caddy/Caddyfile:ro" \
-              -e KANZO_DOMAIN=kanzo.example.com -e KANZO_AUTH_USER=admin \
-              -e 'KANZO_AUTH_HASH=$2a$14$x6vR96bhmUhdmyhb9UWMt.LhAHA3xKDsT1YOkGQXYhUcaEroG2Dw2' \
-              "$caddy_image" caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+            for site in auto:kanzo.example.com files:kanzo.example.com none:http://kanzo.example.com; do
+              docker run --rm -v "$PWD/$f:/etc/caddy/Caddyfile:ro" -v "$PWD/certs:/certs:ro" \
+                -e KANZO_TLS="${site%%:*}" -e KANZO_SITE="${site#*:}" -e KANZO_AUTH_USER=admin \
+                -e 'KANZO_AUTH_HASH=$2a$14$x6vR96bhmUhdmyhb9UWMt.LhAHA3xKDsT1YOkGQXYhUcaEroG2Dw2' \
+                "$caddy_image" caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+            done
           done
-          rm .env
+          rm -r .env certs
 
       - name: Workflow security audit (zizmor)
         run: |
@@ -240,7 +250,8 @@ jobs:
         run: |
           bundle="donzo-deploy-$TAG"
           mkdir "$bundle"
-          cp deploy/compose.yaml deploy/compose.sso.yaml deploy/Caddyfile deploy/Caddyfile.sso "$bundle/"
+          cp deploy/compose*.yaml deploy/Caddyfile deploy/Caddyfile.sso "$bundle/"
+          cp -r deploy/sso-templates "$bundle/"
           sed "s#^KANZO_IMAGE=.*#KANZO_IMAGE=$IMAGE:$V#" deploy/.env.example > "$bundle/.env.example"
           # Reproducible archive: fixed order, owner and timestamps.
           tar --sort=name --owner=0 --group=0 --numeric-owner --mtime="@$(git log -1 --format=%ct)" \
