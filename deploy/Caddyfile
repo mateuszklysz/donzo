@@ -1,0 +1,32 @@
+# Public HTTPS front for Kanzo. Kanzo has no logins of its own, so this proxy
+# is the only thing between the internet and the board: never remove basic_auth
+# (or replace it with forward_auth to an SSO such as Authelia/oauth2-proxy).
+{$KANZO_DOMAIN} {
+	encode zstd gzip
+
+	basic_auth {
+		{$KANZO_AUTH_USER} {$KANZO_AUTH_HASH}
+	}
+
+	reverse_proxy kanzo:4242 {
+		# Kanzo only accepts the Host names its container is called by
+		# (compose sets `hostname: ${KANZO_DOMAIN}`), so pass the original Host.
+		header_up Host {host}
+		# Kanzo requires Origin == "http://" + Host. The browser sends https://,
+		# so only the scheme is rewritten: a foreign origin (https://evil.example)
+		# becomes http://evil.example and is still rejected by Kanzo.
+		header_up Origin ^https:// http://
+		# MCP over HTTP streams responses (SSE).
+		flush_interval -1
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		-Server
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}

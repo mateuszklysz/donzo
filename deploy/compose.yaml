@@ -1,0 +1,65 @@
+# Production: Kanzo behind Caddy (automatic HTTPS + basic auth) on a public server.
+#   cp .env.example .env   # fill it in
+#   docker compose up -d
+name: kanzo
+
+services:
+  kanzo:
+    image: ${KANZO_IMAGE:-ghcr.io/mateuszklysz/kanzo:latest}
+    # Kanzo answers only to Host names it knows: its container hostname is one of them.
+    hostname: ${KANZO_DOMAIN:?set KANZO_DOMAIN in .env}
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      KANZO_PORT: "4242"
+      KANZO_MCP_HTTP: "true"
+      # Only for the -git image and `kanzo sync` over HTTPS (fine-grained PAT, Contents: read/write on one repo).
+      KANZO_GIT_TOKEN: ${KANZO_GIT_TOKEN:-}
+    volumes:
+      - kanzo-data:/data
+    # No `ports:` on purpose: the board is reachable only through Caddy.
+    expose: ["4242"]
+    # `internal` has no internet access. For `kanzo sync` (-git image) add `public` here.
+    networks: [internal]
+    mem_limit: 256m
+    pids_limit: 128
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      kanzo:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      KANZO_DOMAIN: ${KANZO_DOMAIN}
+      KANZO_AUTH_USER: ${KANZO_AUTH_USER:?set KANZO_AUTH_USER in .env}
+      KANZO_AUTH_HASH: ${KANZO_AUTH_HASH:?set KANZO_AUTH_HASH in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    networks: [internal, public]
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+networks:
+  internal:
+    internal: true
+  public: {}
+
+volumes:
+  kanzo-data:
+  caddy-data:
+  caddy-config:
