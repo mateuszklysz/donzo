@@ -81,8 +81,17 @@ def text_problems(text: str) -> list[str]:
     return found
 
 
+# GitHub's own automation (not AI agents): the upstream bump workflow and Dependabot.
+AUTOMATION = {
+    ("github-actions[bot]", "41898282+github-actions[bot]@users.noreply.github.com"),
+    ("dependabot[bot]", "49699333+dependabot[bot]@users.noreply.github.com"),
+}
+
+
 def identity_problems(role: str, name: str, email: str) -> list[str]:
     """An AI agent as `role` (author or committer)."""
+    if (name.strip(), email.strip().lower()) in AUTOMATION:
+        return []
     if AGENT_EMAIL_RE.search(email.strip()) or AGENT_NAME_RE.search(name.strip()):
         return [f"{role} is an AI agent identity ({name} <{email}>); commit as yourself"]
     return []

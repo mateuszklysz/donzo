@@ -79,6 +79,14 @@ class Identity(unittest.TestCase):
                                                    "209825114+claude[bot]@users.noreply.github.com"))
         self.assertTrue(ai_rules.identity_problems("author", "Copilot", "198982749+Copilot@users.noreply.github.com"))
 
+    def test_github_automation(self):
+        self.assertEqual(ai_rules.identity_problems(
+            "author", "github-actions[bot]", "41898282+github-actions[bot]@users.noreply.github.com"), [])
+        self.assertEqual(ai_rules.identity_problems(
+            "author", "dependabot[bot]", "49699333+dependabot[bot]@users.noreply.github.com"), [])
+        # the name alone is not enough
+        self.assertTrue(ai_rules.identity_problems("author", "github-actions[bot]", "x@example.com"))
+
     def test_people(self):
         self.assertEqual(ai_rules.identity_problems("author", "Mateusz Kłysz", "mateuszklysz@icloud.com"), [])
         self.assertEqual(ai_rules.identity_problems("committer", "GitHub", "noreply@github.com"), [])

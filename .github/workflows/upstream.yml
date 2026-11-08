@@ -1,8 +1,12 @@
 # Daily: if emanuele-em/kanzo has a newer release than KANZO_VERSION in the
-# Dockerfile, bump it on main, tag vX.Y.Z and start the build, which pushes the
-# images and publishes the GitHub Release.
-# (Pushes made with GITHUB_TOKEN don't trigger other workflows, so the build
-# is started explicitly with workflow_dispatch, which is allowed.)
+# Dockerfile, open a pull request that bumps the version and pins its commit.
+# Nothing is published until a person reviews and merges it and tags vX.Y.Z:
+# a compromised or broken upstream release never reaches `latest` on its own.
+#
+# Needs: Settings > Actions > General > "Allow GitHub Actions to create and
+# approve pull requests". (Pull requests opened with GITHUB_TOKEN don't start
+# workflows, so the bump's build is started explicitly on its branch; it tests
+# the image and never publishes from a branch.)
 name: upstream
 
 on:
@@ -10,15 +14,26 @@ on:
     - cron: "41 5 * * *"
   workflow_dispatch:
 
-permissions:
-  contents: write
-  actions: write
+permissions: {}
+
+concurrency:
+  group: upstream
+  cancel-in-progress: false
 
 jobs:
   bump:
+    name: bump Kanzo
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write       # push the bump branch
+      pull-requests: write  # open the pull request
+      actions: write        # start the build on the bump branch
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The job pushes the bump branch with this token; nothing else runs after checkout.
+          persist-credentials: true # zizmor: ignore[artipacked]
 
       - name: Compare versions
         id: cmp
@@ -30,22 +45,45 @@ jobs:
           echo "current=$current latest=$latest"
           echo "$latest" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || { echo "unexpected tag '$latest'"; exit 1; }
           newest="$(printf '%s\n%s\n' "$current" "$latest" | sort -V | tail -1)"
-          if [ "$latest" != "$current" ] && [ "$newest" = "$latest" ]; then
-            echo "bump=true" >> "$GITHUB_OUTPUT"
+          if [ "$latest" = "$current" ] || [ "$newest" != "$latest" ]; then
+            exit 0
           fi
-          echo "latest=$latest" >> "$GITHUB_OUTPUT"
+          branch="upstream/kanzo-$latest"
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null; then
+            echo "$branch already exists"; exit 0
+          fi
+          # The commit the tag points to (annotated tags are dereferenced).
+          url=https://github.com/emanuele-em/kanzo
+          commit="$(git ls-remote "$url" "refs/tags/v$latest^{}" | cut -f1)"
+          [ -n "$commit" ] || commit="$(git ls-remote "$url" "refs/tags/v$latest" | cut -f1)"
+          echo "$commit" | grep -Eq '^[0-9a-f]{40}$' || { echo "no commit for v$latest"; exit 1; }
+          {
+            echo "bump=true"
+            echo "latest=$latest"
+            echo "commit=$commit"
+            echo "branch=$branch"
+          } >> "$GITHUB_OUTPUT"
 
-      - name: Bump, tag and start build
+      - name: Open the bump pull request
         if: steps.cmp.outputs.bump == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           V: ${{ steps.cmp.outputs.latest }}
+          COMMIT: ${{ steps.cmp.outputs.commit }}
+          BRANCH: ${{ steps.cmp.outputs.branch }}
         run: |
-          sed -i "s/^ARG KANZO_VERSION=.*/ARG KANZO_VERSION=$V/" Dockerfile
+          git switch -c "$BRANCH"
+          sed -i -e "s/^ARG KANZO_VERSION=.*/ARG KANZO_VERSION=$V/" \
+                 -e "s/^ARG KANZO_COMMIT=.*/ARG KANZO_COMMIT=$COMMIT/" Dockerfile
           sed -i -E "s/(kanzo:|donzo-deploy-v)[0-9]+\.[0-9]+\.[0-9]+/\1$V/g" README.md deploy/.env.example
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -am "chore: update Kanzo to $V"
-          git tag "v$V"
-          git push origin HEAD "v$V"
-          gh workflow run build.yml --ref "v$V"
+          git push origin "$BRANCH"
+          gh pr create --base main --head "$BRANCH" --title "chore: update Kanzo to $V" --body "$(cat <<EOF
+          Kanzo [v$V](https://github.com/emanuele-em/kanzo/releases/tag/v$V), commit \`$COMMIT\`.
+
+          Before merging: read the [upstream changes](https://github.com/emanuele-em/kanzo/compare/$(sed -n 's/^ARG KANZO_COMMIT=//p' <(git show HEAD~1:Dockerfile))...$COMMIT) and wait for the \`build\` run on this branch. After merging, tag \`v$V\` on main to publish the images and the release.
+          EOF
+          )"
+          gh workflow run build.yml --ref "$BRANCH"

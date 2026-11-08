@@ -28,8 +28,11 @@ env:
   PLATFORMS: linux/amd64,linux/arm64
 
 jobs:
-  # The production stack in deploy/: both compose variants resolve and both Caddyfiles are valid.
+  # The production stack in deploy/: both compose variants resolve and both Caddyfiles are
+  # valid; the workflows pass zizmor's security audit; Dockerfile and compose files pass
+  # Trivy's misconfiguration scan.
   deploy:
+    name: deploy and workflow checks
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -52,14 +55,28 @@ jobs:
               -e 'KANZO_AUTH_HASH=$2a$14$x6vR96bhmUhdmyhb9UWMt.LhAHA3xKDsT1YOkGQXYhUcaEroG2Dw2' \
               "$caddy_image" caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
           done
+          rm .env
+
+      - name: Workflow security audit (zizmor)
+        run: |
+          pipx run --spec zizmor==1.16.3 zizmor --offline --min-severity low .github/workflows
+
+      - name: Misconfiguration scan (Trivy)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: config
+          scan-ref: .
+          severity: CRITICAL,HIGH,MEDIUM
+          exit-code: "1"
 
   image:
+    name: image (${{ matrix.target }})
     runs-on: ubuntu-24.04
     permissions:
-      contents: read
-      packages: write
-      id-token: write      # build provenance attestation
-      attestations: write
+      contents: read       # checkout
+      packages: write      # push to GHCR
+      id-token: write      # sign the build provenance attestation
+      attestations: write  # store the attestation
     strategy:
       fail-fast: false
       matrix:
@@ -89,6 +106,14 @@ jobs:
             esac
           fi
           echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "packages_date=$(date -u +%F)" >> "$GITHUB_OUTPUT"
+          # Images are published only from main and release tags, never from a PR or another branch.
+          case "$GITHUB_EVENT_NAME:$GITHUB_REF" in
+            pull_request:*) publish=false ;;
+            *:refs/heads/main|*:refs/tags/v*) publish=true ;;
+            *) publish=false ;;
+          esac
+          echo "publish=$publish" >> "$GITHUB_OUTPUT"
           # GHCR names must be lowercase; the owner may not be.
           echo "image=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/kanzo" >> "$GITHUB_OUTPUT"
 
@@ -122,6 +147,7 @@ jobs:
         with:
           context: .
           target: ${{ matrix.target }}
+          build-args: PACKAGES_DATE=${{ steps.v.outputs.packages_date }}
           platforms: linux/amd64
           load: true
           tags: kanzo:ci
@@ -146,6 +172,7 @@ jobs:
         with:
           context: .
           target: ${{ matrix.target }}
+          build-args: PACKAGES_DATE=${{ steps.v.outputs.packages_date }}
           platforms: linux/arm64
           load: true
           tags: kanzo:ci-arm64
@@ -157,7 +184,7 @@ jobs:
 
       # 3) Push both platforms as one manifest list; every stage comes from the cache.
       - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
-        if: github.event_name != 'pull_request'
+        if: steps.v.outputs.publish == 'true'
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -165,11 +192,12 @@ jobs:
 
       - name: Build (multi-arch) and push
         id: release
-        if: github.event_name != 'pull_request'
+        if: steps.v.outputs.publish == 'true'
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           target: ${{ matrix.target }}
+          build-args: PACKAGES_DATE=${{ steps.v.outputs.packages_date }}
           platforms: ${{ env.PLATFORMS }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
@@ -181,7 +209,7 @@ jobs:
           cache-to: type=gha,scope=${{ matrix.target }},mode=max
 
       - name: Attest build provenance
-        if: github.event_name != 'pull_request'
+        if: steps.v.outputs.publish == 'true'
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-name: ${{ steps.v.outputs.image }}
@@ -190,19 +218,22 @@ jobs:
 
   # A tag vX.Y.Z publishes a GitHub Release with the production deploy bundle.
   release:
+    name: release
     needs: [deploy, image]
     if: github.ref_type == 'tag'
     runs-on: ubuntu-24.04
     permissions:
-      contents: write
+      contents: write      # create the release and upload the bundle
+      id-token: write      # sign the bundle's provenance attestation
+      attestations: write  # store the attestation
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - name: Create release
+      - name: Build the deploy bundle
+        id: bundle
         env:
-          GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
           V: ${{ needs.image.outputs.version }}
           IMAGE: ${{ needs.image.outputs.image }}
@@ -211,9 +242,25 @@ jobs:
           mkdir "$bundle"
           cp deploy/compose.yaml deploy/compose.sso.yaml deploy/Caddyfile deploy/Caddyfile.sso "$bundle/"
           sed "s#^KANZO_IMAGE=.*#KANZO_IMAGE=$IMAGE:$V#" deploy/.env.example > "$bundle/.env.example"
-          tar czf "$bundle.tar.gz" "$bundle"
+          # Reproducible archive: fixed order, owner and timestamps.
+          tar --sort=name --owner=0 --group=0 --numeric-owner --mtime="@$(git log -1 --format=%ct)" \
+            -cf - "$bundle" | gzip -n > "$bundle.tar.gz"
           sha256sum "$bundle.tar.gz" > "$bundle.tar.gz.sha256"
+          echo "name=$bundle" >> "$GITHUB_OUTPUT"
 
+      - name: Attest the bundle's provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: ${{ steps.bundle.outputs.name }}.tar.gz
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          V: ${{ needs.image.outputs.version }}
+          IMAGE: ${{ needs.image.outputs.image }}
+          BUNDLE: ${{ steps.bundle.outputs.name }}
+        run: |
           cat > notes.md <<EOF
           Kanzo $V ([upstream release](https://github.com/emanuele-em/kanzo/releases/tag/v$V)) as a multi-arch container image (linux/amd64, linux/arm64).
 
@@ -226,15 +273,16 @@ jobs:
           docker pull $IMAGE:$V
           \`\`\`
 
-          Production: download \`$bundle.tar.gz\`, unpack it on the server and follow
+          Production: download \`$BUNDLE.tar.gz\`, unpack it on the server and follow
           [Run it in production](https://github.com/$GITHUB_REPOSITORY/blob/$TAG/README.md#run-it-in-production).
 
           Verify an image: \`gh attestation verify oci://$IMAGE:$V --owner $GITHUB_REPOSITORY_OWNER\`
+          Verify the bundle: \`gh attestation verify $BUNDLE.tar.gz --owner $GITHUB_REPOSITORY_OWNER\`
           EOF
 
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" "$bundle.tar.gz" "$bundle.tar.gz.sha256" --clobber
+            gh release upload "$TAG" "$BUNDLE.tar.gz" "$BUNDLE.tar.gz.sha256" --clobber
           else
-            gh release create "$TAG" "$bundle.tar.gz" "$bundle.tar.gz.sha256" \
+            gh release create "$TAG" "$BUNDLE.tar.gz" "$BUNDLE.tar.gz.sha256" \
               --title "Kanzo $V" --notes-file notes.md --verify-tag
           fi

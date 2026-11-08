@@ -15,10 +15,12 @@ coding agents use the MCP endpoint with a password.
 | `ghcr.io/mateuszklysz/kanzo:0.4.1-git` | the same plus `git` and `openssh-client`, for `kanzo sync` |
 
 Tags: `X.Y.Z`, `X.Y` and `latest` (each also with `-git`), and `sha-<commit>`.
-The binary is built from the upstream git tag as a static musl binary. Images are
-rebuilt every week for Alpine security fixes, and a new Kanzo release is picked up
-automatically within a day (new image tags and a new
-[GitHub Release](https://github.com/mateuszklysz/donzo/releases)).
+The binary is built as a static musl binary from the upstream release, pinned by
+version and commit. Images are rebuilt every week with the latest Alpine security
+fixes. A new Kanzo release arrives as a pull request within a day and is published
+(image tags and a [GitHub Release](https://github.com/mateuszklysz/donzo/releases))
+only after it is reviewed, merged and tagged. See [SECURITY.md](SECURITY.md) for the
+security model.
 
 > [!WARNING]
 > Kanzo has **no logins**. Anyone who reaches its port can read and change the
@@ -45,14 +47,17 @@ and ports 80/tcp, 443/tcp and 443/udp open.
    unpack it on the server (or copy the [`deploy/`](deploy) folder of this repo).
 
    ```sh
+   gh attestation verify donzo-deploy-v0.4.1.tar.gz --owner mateuszklysz   # optional
    tar xzf donzo-deploy-v0.4.1.tar.gz && cd donzo-deploy-v0.4.1
-   cp .env.example .env
+   cp .env.example .env && chmod 600 .env   # .env holds secrets
    ```
 
-2. Create the password hash:
+2. Create a long random password (agents use it for `/mcp`, so nobody types it)
+   and its hash:
 
    ```sh
-   docker run --rm caddy:2-alpine caddy hash-password --plaintext 'your-password'
+   openssl rand -base64 32                     # the password: keep it in a password manager
+   docker run --rm caddy:2-alpine caddy hash-password --plaintext 'the-password'
    ```
 
 3. Edit `.env`:
@@ -108,11 +113,13 @@ browser sign-in.
    | `GITHUB_USERS` | GitHub logins allowed in, comma-separated (required) |
    | `GITHUB_ORG`, `GITHUB_TEAM` | optional: also allow an org's members, or teams as `org:team,...` |
 
-3. `docker compose up -d`. Sessions last 7 days; to sign everyone out, change
-   `OAUTH2_COOKIE_SECRET` and run `docker compose up -d` again.
+3. `docker compose up -d`. A session lasts 24 hours; every hour oauth2-proxy checks
+   with GitHub that the user's token still works, so revoking the app in GitHub
+   (Settings → Applications) signs that user out within the hour.
 
-Removing someone from `GITHUB_USERS` (or the org/team) stops new sign-ins at once;
-an existing session ends when it expires or the cookie secret changes.
+Removing someone from `GITHUB_USERS` (or the org/team) stops new sign-ins at once.
+To end their current session too, also change `OAUTH2_COOKIE_SECRET` and run
+`docker compose up -d` (this signs everyone out).
 
 ## Connect coding agents
 
@@ -205,11 +212,16 @@ Kanzo's cross-site request check still rejects foreign origins.
 
 ## Verify an image
 
-Every pushed image has an SBOM and a signed build provenance attestation:
+Every pushed image has an SBOM and a signed build provenance attestation, and so
+does the release's deploy bundle:
 
 ```sh
 gh attestation verify oci://ghcr.io/mateuszklysz/kanzo:0.4.1 --owner mateuszklysz
+gh attestation verify donzo-deploy-v0.4.1.tar.gz --owner mateuszklysz
 ```
+
+In production, pin the image by digest as well (`KANZO_IMAGE=ghcr.io/mateuszklysz/kanzo:0.4.1@sha256:…`; the digest is
+shown by `docker buildx imagetools inspect ghcr.io/mateuszklysz/kanzo:0.4.1`).
 
 ## Build it yourself
 
@@ -226,8 +238,9 @@ tests/smoke.sh kanzo:local-git linux/amd64                                      
 | `Dockerfile`, `docker-entrypoint.sh` | the image |
 | `deploy/` | production stack: `compose.yaml`, `Caddyfile`, `.env.example`; GitHub sign-in: `compose.sso.yaml`, `Caddyfile.sso` |
 | `tests/smoke.sh` | smoke test run in CI on amd64 and arm64 |
+| `SECURITY.md` | security model, hardening, reporting a vulnerability |
 | `.github/workflows/build.yml` | build, test, scan, push to GHCR; release on `v*` tags |
-| `.github/workflows/upstream.yml` | daily check for a new Kanzo release |
+| `.github/workflows/upstream.yml` | daily check: a pull request for each new Kanzo release |
 | `.github/workflows/ai-rules.yml`, `scripts/` | rules on AI tools in commits and pull requests ([CONTRIBUTING.md](CONTRIBUTING.md)) |
 
 ## License
