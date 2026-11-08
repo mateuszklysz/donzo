@@ -53,6 +53,17 @@ class Text(unittest.TestCase):
         self.assertTrue(ai_rules.text_problems("Generated with [Claude Code](https://claude.com)"))  # ai-rules: allow
         self.assertTrue(ai_rules.text_problems("\U0001F916 Generated with something"))  # ai-rules: allow
 
+    def test_project_attribution(self):
+        self.assertTrue(ai_rules.text_problems(
+            '<!-- claude-projects-attribution: {"github_login":"dana"} -->'))  # ai-rules: allow
+        self.assertTrue(ai_rules.text_problems(
+            "_Requested by **Dana** \u00b7 [project thread](https://example.com/x)_"))  # ai-rules: allow
+        self.assertTrue(ai_rules.text_problems(
+            "Requested by Dana \u00b7 project thread"))  # ai-rules: allow
+        self.assertTrue(ai_rules.text_problems(
+            "https://claude.ai/code/project/chan_01?thread=cmsg_01"))  # ai-rules: allow
+        self.assertEqual(ai_rules.text_problems("Requested by the owner in issue #3"), [])
+
     def test_prose_about_claude_is_fine(self):
         self.assertEqual(ai_rules.text_problems("The co-authored-by rule is in CONTRIBUTING.md"), [])
 

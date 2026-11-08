@@ -1,6 +1,6 @@
 # Public HTTPS front for Kanzo. Kanzo has no logins of its own, so this proxy
 # is the only thing between the internet and the board: never remove basic_auth
-# (or replace it with forward_auth to an SSO such as Authelia/oauth2-proxy).
+# (GitHub sign-in instead: Caddyfile.sso with compose.sso.yaml).
 {$KANZO_DOMAIN} {
 	encode zstd gzip
 

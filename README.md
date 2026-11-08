@@ -3,8 +3,11 @@
 Production-ready, multi-arch (`linux/amd64`, `linux/arm64`) container image for
 [Kanzo](https://github.com/emanuele-em/kanzo), the kanban board and MCP server for
 you and your coding agents, plus a ready HTTPS deployment (Caddy with automatic
-Let's Encrypt certificates and a password). Unofficial: not affiliated with the
+Let's Encrypt certificates, GitHub sign-in or a password). Unofficial: not affiliated with the
 Kanzo project.
+
+Sign in to the board with your **GitHub account** (oauth2-proxy) or a password;
+coding agents use the MCP endpoint with a password.
 
 | Image | Contents |
 | --- | --- |
@@ -20,7 +23,7 @@ automatically within a day (new image tags and a new
 > [!WARNING]
 > Kanzo has **no logins**. Anyone who reaches its port can read and change the
 > board and use its MCP endpoint. Never publish port 4242 on a public server: run
-> it behind the proxy in [`deploy/`](deploy), which adds HTTPS and a password.
+> it behind the proxy in [`deploy/`](deploy), which adds HTTPS and GitHub sign-in or a password.
 
 ## Try it locally
 
@@ -61,7 +64,10 @@ and ports 80/tcp, 443/tcp and 443/udp open.
    | `KANZO_AUTH_USER` | login for the board and `/mcp` |
    | `KANZO_AUTH_HASH` | the hash from step 2, **in single quotes** (it contains `$`) |
 
-4. Start it and watch Caddy get the certificate:
+4. Optional, recommended: [sign in with GitHub](#sign-in-with-github) instead of the
+   password for the board.
+
+5. Start it and watch Caddy get the certificate:
 
    ```sh
    docker compose up -d
@@ -71,16 +77,47 @@ and ports 80/tcp, 443/tcp and 443/udp open.
 Open `https://kanzo.example.com` and log in. What runs:
 
 ```
-internet ──443──► caddy (HTTPS, basic auth) ──internal network──► kanzo:4242 ──► volume kanzo-data (/data)
+internet ──443──► caddy (HTTPS, sign-in) ──internal network──► kanzo:4242 ──► volume kanzo-data (/data)
+                     └── with GitHub sign-in: forward_auth ──► oauth2-proxy:4180 ──► GitHub API
 ```
 
 The `kanzo` container has no published port and no internet access (the
 `internal` network), runs as uid 10001 with a read-only root filesystem, no
 capabilities and memory/pid limits. Do not add `ports:` to it.
 
+### Sign in with GitHub
+
+The board then asks for a GitHub login instead of the password; only the GitHub
+accounts you list (plus, optionally, members of an org or team) get in. `/mcp` keeps
+the password from `KANZO_AUTH_USER`/`KANZO_AUTH_HASH`, because agents can't do a
+browser sign-in.
+
+1. Create a GitHub OAuth app: GitHub → Settings → Developer settings →
+   [OAuth Apps](https://github.com/settings/developers) → New OAuth App.
+   - Homepage URL: `https://kanzo.example.com`
+   - Authorization callback URL: `https://kanzo.example.com/oauth2/callback`
+
+   Then generate a client secret.
+2. In `.env`:
+
+   | Variable | Value |
+   | --- | --- |
+   | `COMPOSE_FILE` | `compose.yaml:compose.sso.yaml` (uncomment the line) |
+   | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | from the OAuth app |
+   | `OAUTH2_COOKIE_SECRET` | output of `openssl rand -base64 32 \| tr -- '+/' '-_'` |
+   | `GITHUB_USERS` | GitHub logins allowed in, comma-separated (required) |
+   | `GITHUB_ORG`, `GITHUB_TEAM` | optional: also allow an org's members, or teams as `org:team,...` |
+
+3. `docker compose up -d`. Sessions last 7 days; to sign everyone out, change
+   `OAUTH2_COOKIE_SECRET` and run `docker compose up -d` again.
+
+Removing someone from `GITHUB_USERS` (or the org/team) stops new sign-ins at once;
+an existing session ends when it expires or the cookie secret changes.
+
 ## Connect coding agents
 
-Agents reach the MCP endpoint at `https://<your domain>/mcp` with the same login:
+Agents reach the MCP endpoint at `https://<your domain>/mcp` with the
+`KANZO_AUTH_USER` login and its password (with or without GitHub sign-in):
 
 ```sh
 claude mcp add --transport http kanzo https://kanzo.example.com/mcp \
@@ -187,7 +224,7 @@ tests/smoke.sh kanzo:local-git linux/amd64                                      
 | Path | |
 | --- | --- |
 | `Dockerfile`, `docker-entrypoint.sh` | the image |
-| `deploy/` | production stack: `compose.yaml`, `Caddyfile`, `.env.example` |
+| `deploy/` | production stack: `compose.yaml`, `Caddyfile`, `.env.example`; GitHub sign-in: `compose.sso.yaml`, `Caddyfile.sso` |
 | `tests/smoke.sh` | smoke test run in CI on amd64 and arm64 |
 | `.github/workflows/build.yml` | build, test, scan, push to GHCR; release on `v*` tags |
 | `.github/workflows/upstream.yml` | daily check for a new Kanzo release |

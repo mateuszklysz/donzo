@@ -11,7 +11,7 @@ on:
   push:
     branches: [main]
     tags: ["v*"]
-    paths: [Dockerfile, docker-entrypoint.sh, .dockerignore, tests/**, .github/workflows/build.yml]
+    paths: [Dockerfile, docker-entrypoint.sh, .dockerignore, tests/**, deploy/**, .github/workflows/build.yml]
   pull_request:
   schedule:
     - cron: "17 4 * * 1"
@@ -28,6 +28,31 @@ env:
   PLATFORMS: linux/amd64,linux/arm64
 
 jobs:
+  # The production stack in deploy/: both compose variants resolve and both Caddyfiles are valid.
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check deploy/
+        working-directory: deploy
+        run: |
+          cp .env.example .env
+          sed -i -e 's/^GITHUB_CLIENT_ID=$/GITHUB_CLIENT_ID=ci/' -e 's/^GITHUB_CLIENT_SECRET=$/GITHUB_CLIENT_SECRET=ci/' \
+                 -e 's/^OAUTH2_COOKIE_SECRET=$/OAUTH2_COOKIE_SECRET=0123456789abcdef0123456789abcdef/' \
+                 -e 's/^GITHUB_USERS=$/GITHUB_USERS=octocat/' .env
+          docker compose config -q
+          COMPOSE_FILE=compose.yaml:compose.sso.yaml docker compose config -q
+          caddy_image="$(sed -n 's/^ *image: \(caddy:.*\)$/\1/p' compose.yaml)"
+          for f in Caddyfile Caddyfile.sso; do
+            docker run --rm -v "$PWD/$f:/etc/caddy/Caddyfile:ro" \
+              -e KANZO_DOMAIN=kanzo.example.com -e KANZO_AUTH_USER=admin \
+              -e 'KANZO_AUTH_HASH=$2a$14$x6vR96bhmUhdmyhb9UWMt.LhAHA3xKDsT1YOkGQXYhUcaEroG2Dw2' \
+              "$caddy_image" caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+          done
+
   image:
     runs-on: ubuntu-24.04
     permissions:
@@ -165,7 +190,7 @@ jobs:
 
   # A tag vX.Y.Z publishes a GitHub Release with the production deploy bundle.
   release:
-    needs: image
+    needs: [deploy, image]
     if: github.ref_type == 'tag'
     runs-on: ubuntu-24.04
     permissions:
@@ -184,7 +209,7 @@ jobs:
         run: |
           bundle="donzo-deploy-$TAG"
           mkdir "$bundle"
-          cp deploy/compose.yaml deploy/Caddyfile "$bundle/"
+          cp deploy/compose.yaml deploy/compose.sso.yaml deploy/Caddyfile deploy/Caddyfile.sso "$bundle/"
           sed "s#^KANZO_IMAGE=.*#KANZO_IMAGE=$IMAGE:$V#" deploy/.env.example > "$bundle/.env.example"
           tar czf "$bundle.tar.gz" "$bundle"
           sha256sum "$bundle.tar.gz" > "$bundle.tar.gz.sha256"

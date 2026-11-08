@@ -1,0 +1,50 @@
+# GitHub sign-in for the board, on top of compose.yaml. Enable it in .env with
+#   COMPOSE_FILE=compose.yaml:compose.sso.yaml
+# The browser signs in with GitHub (oauth2-proxy); /mcp keeps basic auth for agents.
+services:
+  caddy:
+    depends_on:
+      oauth2-proxy:
+        condition: service_started
+    volumes:
+      - ./Caddyfile.sso:/etc/caddy/Caddyfile:ro
+
+  oauth2-proxy:
+    image: quay.io/oauth2-proxy/oauth2-proxy:v7.15.5
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      OAUTH2_PROXY_PROVIDER: github
+      OAUTH2_PROXY_CLIENT_ID: ${GITHUB_CLIENT_ID:?set GITHUB_CLIENT_ID in .env}
+      OAUTH2_PROXY_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:?set GITHUB_CLIENT_SECRET in .env}
+      OAUTH2_PROXY_COOKIE_SECRET: ${OAUTH2_COOKIE_SECRET:?set OAUTH2_COOKIE_SECRET in .env}
+      # Who may sign in. Without any of these every GitHub account could, so the
+      # user list is required; an org or team adds its members as well.
+      OAUTH2_PROXY_GITHUB_USERS: ${GITHUB_USERS:?set GITHUB_USERS in .env (comma-separated logins)}
+      OAUTH2_PROXY_GITHUB_ORG: ${GITHUB_ORG:-}
+      OAUTH2_PROXY_GITHUB_TEAM: ${GITHUB_TEAM:-}
+      OAUTH2_PROXY_EMAIL_DOMAINS: "*"
+      OAUTH2_PROXY_REDIRECT_URL: https://${KANZO_DOMAIN}/oauth2/callback
+      OAUTH2_PROXY_HTTP_ADDRESS: 0.0.0.0:4180
+      # Only used by Caddy's forward_auth: the board itself is proxied by Caddy.
+      OAUTH2_PROXY_UPSTREAMS: static://202
+      OAUTH2_PROXY_REVERSE_PROXY: "true"
+      # Only Caddy reaches it (no published port): trust X-Forwarded-* from container networks.
+      OAUTH2_PROXY_TRUSTED_PROXY_IPS: 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7
+      OAUTH2_PROXY_SKIP_PROVIDER_BUTTON: "true"
+      OAUTH2_PROXY_COOKIE_NAME: __Host-kanzo_session
+      OAUTH2_PROXY_COOKIE_SECURE: "true"
+      OAUTH2_PROXY_COOKIE_SAMESITE: lax
+      OAUTH2_PROXY_COOKIE_EXPIRE: 168h
+      OAUTH2_PROXY_COOKIE_CSRF_PER_REQUEST: "true"
+      OAUTH2_PROXY_COOKIE_CSRF_EXPIRE: 15m
+    expose: ["4180"]
+    # `public`: it calls the GitHub API to check who signed in.
+    networks: [internal, public]
+    mem_limit: 128m
+    pids_limit: 64
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }

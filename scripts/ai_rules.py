@@ -36,6 +36,10 @@ FORBIDDEN = [
     (TRAILER_RE, "agent trailer"),
     (re.compile(r"generated (?:with|by) \[?(?:claude|chatgpt|copilot|codex)", re.I), "AI tool footer"),
     (re.compile(r"\U0001F916\s*generated", re.I), "AI tool footer"),
+    # The "Requested by ... · project thread" block an agent puts on top of a pull request.
+    (re.compile(r"claude-projects-attribution", re.I), "AI project attribution"),
+    (re.compile(r"claude\.ai/\S*project", re.I), "link to a private AI project"),
+    (re.compile(r"requested by \*{0,2}[^*\n]+\*{0,2}\s*\u00b7\s*\[?project thread", re.I), "AI project attribution"),
 ]
 
 # An AI agent's identity as author or committer: its address, or its name.
