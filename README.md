@@ -99,26 +99,39 @@ accounts you list (plus, optionally, members of an org or team) get in. `/mcp` k
 the password from `KANZO_AUTH_USER`/`KANZO_AUTH_HASH`, because agents can't do a
 browser sign-in.
 
-1. Create a GitHub OAuth app: GitHub → Settings → Developer settings →
-   [OAuth Apps](https://github.com/settings/developers) → New OAuth App.
-   - Homepage URL: `https://kanzo.example.com`
-   - Authorization callback URL: `https://kanzo.example.com/oauth2/callback`
+1. Create the app people sign in with. Pick one:
 
-   Then generate a client secret.
+   **GitHub App (recommended, least access).** In the account or organization that owns
+   the board: Settings → Developer settings → GitHub Apps → New GitHub App.
+   - Homepage URL: `https://kanzo.example.com`
+   - Callback URL: `https://kanzo.example.com/oauth2/callback`
+   - Untick "Expire user authorization tokens" (otherwise sign-ins last 8 hours, not 24)
+   - Untick Webhook → Active
+   - Permissions: Account → Email addresses: Read-only and Organization → Members:
+     Read-only (oauth2-proxy reads the user's orgs and teams on every sign-in). Nothing else.
+   - Where can it be installed: Only on this account
+
+   Create it, generate a client secret, and with an org: Install App → install it in that
+   org. The app then sees only that org, and the consent screen lists no other
+   organizations.
+
+   **OAuth app.** GitHub → Settings → Developer settings →
+   [OAuth Apps](https://github.com/settings/developers) → New OAuth App, with the same
+   homepage and callback URL, then generate a client secret. It asks for `user:email` and
+   `read:org` (oauth2-proxy reads the user's orgs and teams on every sign-in), so the
+   consent screen lists all of the user's organizations; don't grant any of them.
 2. In `.env`:
 
    | Variable | Value |
    | --- | --- |
    | `COMPOSE_FILE` | `compose.yaml:compose.sso.yaml` (uncomment the line) |
-   | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | from the OAuth app |
+   | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | from the app |
    | `OAUTH2_COOKIE_SECRET` | output of `openssl rand -base64 32 \| tr -- '+/' '-_'` |
    | `GITHUB_USERS` | GitHub logins allowed in, comma-separated |
-   | `GITHUB_ORG`, `GITHUB_TEAM` | allow an org's members, or teams as `org:team,...` (set at least one of these three); then also set `GITHUB_SCOPE=user:email read:org` |
+   | `GITHUB_ORG`, `GITHUB_TEAM` | allow an org's members, or teams as `org:team,...` |
 
-   Sign-in asks GitHub only for read access to the account's email addresses
-   (`user:email`), plus organization membership (`read:org`) when you set `GITHUB_SCOPE` for
-   an org or team. The OAuth app needs no other permissions; on GitHub's consent screen
-   don't grant it access to any organization unless you use `GITHUB_ORG`/`GITHUB_TEAM`.
+   Set at least one of `GITHUB_USERS`, `GITHUB_ORG`, `GITHUB_TEAM`; without any of them
+   the stack does not start.
 
 3. `docker compose up -d`. A session lasts 24 hours; every hour oauth2-proxy checks
    with GitHub that the user's token still works, so revoking the app in GitHub

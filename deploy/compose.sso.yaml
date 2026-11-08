@@ -36,9 +36,10 @@ services:
       OAUTH2_PROXY_GITHUB_USERS: ${GITHUB_USERS:-}
       OAUTH2_PROXY_GITHUB_ORG: ${GITHUB_ORG:-}
       OAUTH2_PROXY_GITHUB_TEAM: ${GITHUB_TEAM:-}
-      # What the board asks GitHub for: only the account's email addresses (read-only).
-      # GITHUB_ORG/GITHUB_TEAM need "user:email read:org" as well (see .env.example).
-      OAUTH2_PROXY_SCOPE: ${GITHUB_SCOPE:-user:email}
+      # OAuth app scopes. oauth2-proxy reads the user's orgs and teams on every sign-in,
+      # so an OAuth app needs read:org (sign-in fails with 500 without it). A GitHub App
+      # ignores scopes: its own permissions apply (see README, "Sign in with GitHub").
+      OAUTH2_PROXY_SCOPE: user:email read:org
       OAUTH2_PROXY_EMAIL_DOMAINS: "*"
       OAUTH2_PROXY_REDIRECT_URL: https://${KANZO_DOMAIN}/oauth2/callback
       OAUTH2_PROXY_HTTP_ADDRESS: 0.0.0.0:4180
