@@ -9,8 +9,8 @@
 
 # The upstream release, pinned by version and by its commit: a moved or replaced
 # tag can't change what gets built. .github/workflows/upstream.yml updates both.
-ARG KANZO_VERSION=0.4.1
-ARG KANZO_COMMIT=672f302b9103ea621f39c7dea0d02018ea61d9bd
+ARG KANZO_VERSION=0.4.2
+ARG KANZO_COMMIT=14247076a3e976178f3a50094912d15d1a4f7462
 
 # Base images are pinned by digest (Dependabot keeps them current).
 FROM --platform=$BUILDPLATFORM tonistiigi/xx:1.10.0@sha256:40fe21f44bb8cddf1eb1226db190d0a984118f62ee02a91b77d99448d28264a6 AS xx

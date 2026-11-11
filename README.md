@@ -12,8 +12,8 @@ custom connectors, through mcp-auth-proxy).
 
 | Image | Contents |
 | --- | --- |
-| `ghcr.io/nickyyoo/kanzo:0.4.1` | Kanzo on Alpine, about 14 MB |
-| `ghcr.io/nickyyoo/kanzo:0.4.1-git` | the same plus `git` and `openssh-client`, for `kanzo sync` |
+| `ghcr.io/nickyyoo/kanzo:0.4.2` | Kanzo on Alpine, about 14 MB |
+| `ghcr.io/nickyyoo/kanzo:0.4.2-git` | the same plus `git` and `openssh-client`, for `kanzo sync` |
 
 Tags: `X.Y.Z`, `X.Y` and `latest` (each also with `-git`), and `sha-<commit>`.
 The binary is built as a static musl binary from the upstream release, pinned by
@@ -45,13 +45,13 @@ and ports 80/tcp, 443/tcp and 443/udp open. Does the domain already have a certi
 or does another proxy already run HTTPS on the server? See
 [Use a certificate you already have](#use-a-certificate-you-already-have).
 
-1. Get the deploy files: download `donzo-deploy-v0.4.1.tar.gz` from the
+1. Get the deploy files: download `donzo-deploy-v0.4.2.tar.gz` from the
    [latest release](https://github.com/nickyyOO/donzo/releases/latest) and
    unpack it on the server (or copy the [`deploy/`](deploy) folder of this repo).
 
    ```sh
-   gh attestation verify donzo-deploy-v0.4.1.tar.gz --owner nickyyOO   # optional
-   tar xzf donzo-deploy-v0.4.1.tar.gz && cd donzo-deploy-v0.4.1
+   gh attestation verify donzo-deploy-v0.4.2.tar.gz --owner nickyyOO   # optional
+   tar xzf donzo-deploy-v0.4.2.tar.gz && cd donzo-deploy-v0.4.2
    cp .env.example .env && chmod 600 .env   # .env holds secrets
    ```
 
@@ -67,7 +67,7 @@ or does another proxy already run HTTPS on the server? See
 
    | Variable | Value |
    | --- | --- |
-   | `KANZO_IMAGE` | `ghcr.io/nickyyoo/kanzo:0.4.1` (pin a version) |
+   | `KANZO_IMAGE` | `ghcr.io/nickyyoo/kanzo:0.4.2` (pin a version) |
    | `KANZO_DOMAIN` | your DNS name, e.g. `kanzo.example.com` |
    | `KANZO_AUTH_USER` | login for the board and `/mcp` |
    | `KANZO_AUTH_HASH` | the hash from step 2, **in single quotes** (it contains `$`) |
@@ -293,7 +293,7 @@ docker compose start kanzo
 
 ### Sync to a git repo (`-git` image)
 
-1. Set `KANZO_IMAGE=ghcr.io/nickyyoo/kanzo:0.4.1-git` in `.env`.
+1. Set `KANZO_IMAGE=ghcr.io/nickyyoo/kanzo:0.4.2-git` in `.env`.
 2. Set `KANZO_GIT_TOKEN` to a fine-grained token with Contents read/write on one
    private repository for the data.
 3. In `compose.yaml`, change the `kanzo` service to `networks: [internal, public]`
@@ -330,12 +330,12 @@ Every pushed image has an SBOM and a signed build provenance attestation, and so
 does the release's deploy bundle:
 
 ```sh
-gh attestation verify oci://ghcr.io/nickyyoo/kanzo:0.4.1 --owner nickyyOO
-gh attestation verify donzo-deploy-v0.4.1.tar.gz --owner nickyyOO
+gh attestation verify oci://ghcr.io/nickyyoo/kanzo:0.4.2 --owner nickyyOO
+gh attestation verify donzo-deploy-v0.4.2.tar.gz --owner nickyyOO
 ```
 
-In production, pin the image by digest as well (`KANZO_IMAGE=ghcr.io/nickyyoo/kanzo:0.4.1@sha256:…`; the digest is
-shown by `docker buildx imagetools inspect ghcr.io/nickyyoo/kanzo:0.4.1`).
+In production, pin the image by digest as well (`KANZO_IMAGE=ghcr.io/nickyyoo/kanzo:0.4.2@sha256:…`; the digest is
+shown by `docker buildx imagetools inspect ghcr.io/nickyyoo/kanzo:0.4.2`).
 
 ## Build it yourself
 
